@@ -161,13 +161,21 @@ export default function App() {
       window.history.replaceState({}, "", "/");
       setLoading(true);
       setLoadingMsg("wymiana tokenu...");
-      exchangeCodeForToken(code).then(() => {
-        setLoggedIn(true);
+      
+      exchangeCodeForToken(code).then((data) => {
+        // Twarde zabezpieczenie: ustawiamy "loggedIn" tylko jeśli mamy token!
+        if (data && data.access_token) {
+          setLoggedIn(true);
+        } else {
+          console.error("🚨 Błąd logowania: Spotify nie zwróciło tokenu!");
+        }
+        setLoading(false);
+      }).catch(err => {
+        console.error("🚨 Krytyczny błąd autoryzacji:", err);
         setLoading(false);
       });
     }
   }, []);
-
   // ── Inicjalizacja Web Playback SDK (Własny odtwarzacz) ──────────────────────
   useEffect(() => {
     if (!loggedIn) return;
