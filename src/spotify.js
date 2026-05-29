@@ -153,28 +153,35 @@ export async function searchSpotify(query, type = "track", limit = 10) {
   return await api(`/search?${params.toString()}`);
 }
 
-export async function getLikedTracks() {
+export async function getLikedTracks({ maxTracks = 50, onProgress } = {}) {
   let tracks = [];
   let url = "/me/tracks?limit=50";
-  
-  while (url) {
+
+  while (url && tracks.length < maxTracks) {
     const data = await api(url);
-    if (!data || !data.items) break;
-    
-    const mapped = data.items.map(({ track }) => ({
-      id: track.id,
-      name: track.name,
-      uri: track.uri,
-      artist: track.artists.map((a) => a.name).join(", "),
-      duration: msToMinSec(track.duration_ms),
-      image: track.album.images[1]?.url || track.album.images[0]?.url,
-    }));
+    if (!data?.items?.length) break;
+
+    const mapped = data.items
+      .map(({ track }) => {
+        if (!track?.id) return null;
+        return {
+          id: track.id,
+          name: track.name,
+          uri: track.uri,
+          artist: track.artists?.map((a) => a.name).join(", ") || "—",
+          duration: msToMinSec(track.duration_ms),
+          image: track.album?.images?.[1]?.url || track.album?.images?.[0]?.url,
+        };
+      })
+      .filter(Boolean);
+
     tracks = [...tracks, ...mapped];
-    
-    // api() samo radzi sobie z pełnymi URLami, więc możemy przypisać bezpośrednio data.next
-    url = data.next ? data.next : null;
+    onProgress?.(tracks.length, data.total);
+
+    url = data.next && tracks.length < maxTracks ? data.next : null;
   }
-  return tracks;
+
+  return tracks.slice(0, maxTracks);
 }
 
 export async function getPlaylists() {

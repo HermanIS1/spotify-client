@@ -61,7 +61,7 @@ function LoginScreen() {
   );
 }
 
-function LoadingScreen({ message }) {
+function LoadingScreen({ message, hint }) {
   return (
     <div className="screen-center">
       <div className="screen-frame">
@@ -71,6 +71,19 @@ function LoadingScreen({ message }) {
         <div style={{ fontSize: 12, color: "var(--g3)", letterSpacing: "0.15em" }}>
           {message} <span className="cursor">█</span>
         </div>
+        {hint && (
+          <div
+            style={{
+              marginTop: 16,
+              fontSize: 10,
+              color: "var(--g4)",
+              maxWidth: 280,
+              lineHeight: 1.5,
+            }}
+          >
+            {hint}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -80,6 +93,7 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
+  const [loadingHint, setLoadingHint] = useState("");
 
   const [playlists, setPlaylists] = useState([]);
   const [likedTracks, setLikedTracks] = useState([]);
@@ -176,15 +190,35 @@ export default function App() {
 
   async function loadLibrary() {
     setLoading(true);
-    setLoadingMsg("SYNC.LIKED");
-    const liked = await getLikedTracks();
-    setLikedTracks(liked);
-    setCurrentTracks(liked);
+    setLoadingHint("");
+    try {
+      setLoadingMsg("SYNC.LIKED");
+      const liked = await getLikedTracks({
+        maxTracks: 50,
+        onProgress: (loaded, total) => {
+          if (total) setLoadingHint(`${loaded} / ${total} utworów`);
+        },
+      });
+      setLikedTracks(liked);
+      setCurrentTracks(liked);
 
-    setLoadingMsg("SYNC.PLAYLISTS");
-    const pls = await getPlaylists();
-    setPlaylists(pls);
-    setLoading(false);
+      setLoadingMsg("SYNC.PLAYLISTS");
+      setLoadingHint("");
+      const pls = await getPlaylists();
+      setPlaylists(pls);
+    } catch (err) {
+      console.error("Library sync failed:", err);
+      const msg = err.message || "Błąd synchronizacji";
+      showToast(msg, "error");
+      setLoadingHint(msg);
+      // Still open the app so they are not stuck on this screen
+      setLikedTracks([]);
+      setCurrentTracks([]);
+      setPlaylists([]);
+    } finally {
+      setLoading(false);
+      setLoadingHint("");
+    }
   }
 
   async function refreshPlaylistTracks(playlistId) {
@@ -420,7 +454,7 @@ export default function App() {
         : null;
 
   if (!loggedIn) return <LoginScreen />;
-  if (loading) return <LoadingScreen message={loadingMsg} />;
+  if (loading) return <LoadingScreen message={loadingMsg} hint={loadingHint} />;
 
   return (
     <div className="app-shell">
