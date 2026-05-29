@@ -268,8 +268,7 @@ export default function App() {
     setCurrentPlaylistUri(pl?.uri || null);
   }
 
-  // ── Odtwarzanie tracka ──────────────────────────────────────────────────────
-  async function handlePlayTrack(track, idx) {
+async function handlePlayTrack(track, idx) {
     setCurrentTrack(track);
     setCurrentIdx(idx);
     setIsPlaying(true);
@@ -278,7 +277,8 @@ export default function App() {
     totalSecRef.current = parseDuration(track.duration);
 
     try {
-      await playTrackOnSpotify(track.uri, currentPlaylistUri);
+      // TUTAJ DODAJESZ deviceId NA KOŃCU
+      await playTrackOnSpotify(track.uri, currentPlaylistUri, deviceId);
     } catch (err) {
       console.warn("Spotify playback error:", err);
     }
