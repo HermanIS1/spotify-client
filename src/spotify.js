@@ -323,15 +323,16 @@ export async function transferPlayback(deviceId) {
   });
 }
 export async function searchSpotify(query, type = "track", limit = 20) {
+  // Zadbaj o to, aby limit był liczbą między 1 a 50
+  const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 50);
+
   const params = new URLSearchParams({
-    q: query.substring(0, 100),
+    q: query.substring(0, 100), // Pamiętamy o limicie 100 znaków!
     type: type,
-    limit: limit.toString(),
+    limit: safeLimit.toString(),
   });
 
-  return await api(`/search?${params.toString()}`, {
-    method: "GET" // Dodaj to jawnie
-  });
+  return await api(`/search?${params.toString()}`);
 }
 
 export async function addTracksToPlaylist(playlistId, trackUris) {
