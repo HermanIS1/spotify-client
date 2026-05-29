@@ -152,18 +152,21 @@ export default function App() {
   const syncInterval = useRef(null);
   const volumeTimeoutRef = useRef(null);
 
+const isExchanging = useRef(false);
+
   // ── OAuth callback ────────────────────────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
 
-    if (code) {
+    // Jeśli mamy kod i jeszcze go nie wymieniamy (BLOKADA NA STRICT MODE)
+    if (code && !isExchanging.current) {
+      isExchanging.current = true; // Kłódka zamknięta - kod zostanie wysłany tylko raz!
       window.history.replaceState({}, "", "/");
       setLoading(true);
       setLoadingMsg("wymiana tokenu...");
       
       exchangeCodeForToken(code).then((data) => {
-        // Twarde zabezpieczenie: ustawiamy "loggedIn" tylko jeśli mamy token!
         if (data && data.access_token) {
           setLoggedIn(true);
         } else {
