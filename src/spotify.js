@@ -127,19 +127,32 @@ async function api(endpoint, options = {}) {
   return data;
 }
 
-// --- Funkcje użytkowe ---
-export async function searchSpotify(query, type = "track", limit = 20) {
-  if (!query || typeof query !== 'string' || query.trim() === "") {
-    return { tracks: { items: [] } };
+async function api(endpoint, options = {}) {
+  let token = localStorage.getItem("spotify_token");
+  const expiry = localStorage.getItem("spotify_token_expiry");
+
+  if (expiry && Date.now() > parseInt(expiry) - 60_000) {
+    token = await refreshToken();
   }
-  
-  const params = new URLSearchParams({
-    q: query.trim(),
-    type: type,
-    limit: "20",
+
+  if (!token) throw new Error("No token available");
+
+  const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
+
+  const res = await fetch(fullUrl, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Accept": "application/json",        // ← DODAJ TĘ LINIĘ
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
   });
 
-  return await api(`/search?${params.toString()}`);
+  if (res.status === 204 || res.status === 202) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
+  return data;
 }
 
 export async function getLikedTracks() {
