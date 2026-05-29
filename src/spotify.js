@@ -1,5 +1,6 @@
 const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae";
 const REDIRECT_URI = window.location.origin + "/callback";
+const BASE_URL = "https://api.spotify.com/v1";
 
 const SCOPES = [
   "user-library-read", "playlist-read-private", "playlist-read-collaborative",
@@ -8,26 +9,14 @@ const SCOPES = [
   "user-modify-playback-state",
 ].join(" ");
 
-// --- Pomocnicze funkcje autoryzacji ---
-function generateRandomString(length) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  return Array.from(crypto.getRandomValues(new Uint8Array(length))).map((b) => chars[b % chars.length]).join("");
-}
-
-async function generateCodeChallenge(verifier) {
-  const data = new TextEncoder().encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
+// --- Autoryzacja ---
 export async function redirectToLogin() {
-  const verifier = generateRandomString(128);
-  const challenge = await generateCodeChallenge(verifier);
+  const verifier = Math.random().toString(36).substring(2);
   localStorage.setItem("spotify_verifier", verifier);
   const params = new URLSearchParams({
     response_type: "code", client_id: CLIENT_ID, scope: SCOPES,
     redirect_uri: REDIRECT_URI, code_challenge_method: "S256",
-    code_challenge: challenge, show_dialog: "true",
+    code_challenge: verifier, show_dialog: "true",
   });
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
@@ -56,10 +45,8 @@ async function api(endpoint, options = {}) {
   const token = localStorage.getItem("spotify_token");
   if (!token) throw new Error("No token available");
 
-  // POPRAWKA URL: używamy właściwego adresu API Spotify
-  const baseUrl = "https://api.spotify.com/v1";
-  const fullUrl = endpoint.startsWith("http") ? endpoint : `${baseUrl}${endpoint}`;
-
+  const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
+  
   const res = await fetch(fullUrl, {
     ...options,
     headers: {
@@ -69,16 +56,13 @@ async function api(endpoint, options = {}) {
     },
   });
 
-  if (res.status === 204 || res.status === 202) return null;
+  if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    console.error(`❌ API error ${res.status}:`, data);
-    throw new Error(`Spotify API error: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
   return data;
 }
 
-// --- Funkcje wyszukiwania i inne ---
+// --- Funkcje użytkowe ---
 export async function searchSpotify(query, type = "track", limit = 20) {
   if (!query || query.trim().length === 0) return { tracks: { items: [] } };
   
@@ -91,6 +75,67 @@ export async function searchSpotify(query, type = "track", limit = 20) {
   return await api(`/search?${params.toString()}`);
 }
 
-// Reszta Twoich funkcji (getLikedTracks, getPlaylists itp.) zostaje bez zmian, 
-// ale pamiętaj, aby w getLikedTracks i getPlaylistTracks poprawić zamianę URL:
-// url = data.next ? data.next.replace("https://api.spotify.com/v1", "") : null;
+export async function getLikedTracks() {
+  let tracks = [];
+  let url = "/me/tracks?limit=50";
+  while (url) {
+    const data = await api(url);
+    const mapped = data.items.map(({ track }) => ({
+      id: track.id, name: track.name, uri: track.uri,
+      artist: track.artists.map((a) => a.name).join(", "),
+      duration: msToMinSec(track.duration_ms),
+      image: track.album.images[1]?.url || track.album.images[0]?.url,
+    }));
+    tracks = [...tracks, ...mapped];
+    url = data.next ? data.next.replace(BASE_URL, "") : null;
+  }
+  return tracks;
+}
+
+export async function getPlaylists() {
+  const data = await api("/me/playlists?limit=50");
+  return data.items.filter(Boolean).map((pl) => ({
+    id: pl.id, name: pl.name, uri: pl.uri, image: pl.images?.[0]?.url,
+  }));
+}
+
+export async function getPlaylistTracks(playlistId) {
+  let tracks = [];
+  let url = `/playlists/${playlistId}/tracks?limit=100`;
+  while (url) {
+    const data = await api(url);
+    const mapped = data.items.filter(el => el.track).map(({ track }) => ({
+      id: track.id, name: track.name, uri: track.uri,
+      artist: track.artists.map((a) => a.name).join(", "),
+      duration: msToMinSec(track.duration_ms),
+      image: track.album.images[1]?.url || track.album.images[0]?.url,
+    }));
+    tracks = [...tracks, ...mapped];
+    url = data.next ? data.next.replace(BASE_URL, "") : null;
+  }
+  return tracks;
+}
+
+export async function playTrackOnSpotify(trackUri, contextUri = null) {
+  const body = contextUri ? { context_uri: contextUri, offset: { uri: trackUri } } : { uris: [trackUri] };
+  await api("/me/player/play", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export async function pauseSpotify() { await api("/me/player/pause", { method: "PUT" }); }
+export async function resumeSpotify() { await api("/me/player/play", { method: "PUT" }); }
+export async function nextSpotify() { await api("/me/player/next", { method: "POST" }); }
+export async function prevSpotify() { await api("/me/player/previous", { method: "POST" }); }
+export async function getPlaybackState() { return await api("/me/player"); }
+export async function logout() { localStorage.clear(); }
+export function isLoggedIn() { return !!localStorage.getItem("spotify_token"); }
+
+function msToMinSec(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = (totalSec % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+export async function transferPlayback(deviceId) {
+  await api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: false }) });
+}
