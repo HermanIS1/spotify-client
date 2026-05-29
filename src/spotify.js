@@ -1,5 +1,8 @@
 const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae";
 const REDIRECT_URI = window.location.origin + "/callback";
+
+console.log("🔧 Spotify Config:", { CLIENT_ID, REDIRECT_URI });
+
 const SCOPES = [
   "user-library-read",
   "playlist-read-private",
@@ -31,6 +34,7 @@ async function generateCodeChallenge(verifier) {
 }
 
 export async function redirectToLogin() {
+  console.log("🔐 Starting login flow...");
   const verifier = generateRandomString(128);
   const challenge = await generateCodeChallenge(verifier);
 
@@ -46,11 +50,19 @@ export async function redirectToLogin() {
     show_dialog: "true",
   });
 
-  window.location.href = `https://accounts.spotify.com/authorize?${params}`;
+  const authUrl = `https://accounts.spotify.com/authorize?${params}`;
+  console.log("🌐 Redirecting to:", authUrl);
+  window.location.href = authUrl;
 }
 
 export async function exchangeCodeForToken(code) {
+  console.log("💱 Exchanging code for token...");
   const verifier = localStorage.getItem("spotify_verifier");
+
+  if (!verifier) {
+    console.error("❌ No verifier found!");
+    return;
+  }
 
   const res = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
@@ -65,20 +77,27 @@ export async function exchangeCodeForToken(code) {
   });
 
   const data = await res.json();
+  console.log("📦 Token response:", data);
+
   if (data.access_token) {
+    console.log("✅ Token saved successfully!");
     localStorage.setItem("spotify_token", data.access_token);
     localStorage.setItem("spotify_refresh_token", data.refresh_token);
     localStorage.setItem(
       "spotify_token_expiry",
       Date.now() + data.expires_in * 1000,
     );
+  } else {
+    console.error("❌ No token in response:", data);
   }
   return data;
 }
 
 async function refreshToken() {
+  console.log("🔄 Refreshing token...");
   const refresh = localStorage.getItem("spotify_refresh_token");
   if (!refresh) {
+    console.error("❌ No refresh token!");
     logout();
     return null;
   }
@@ -94,6 +113,7 @@ async function refreshToken() {
   });
 
   if (!res.ok) {
+    console.error("❌ Refresh failed!");
     logout();
     window.location.href = "/";
     return null;
@@ -109,6 +129,7 @@ async function refreshToken() {
     if (data.refresh_token) {
       localStorage.setItem("spotify_refresh_token", data.refresh_token);
     }
+    console.log("✅ Token refreshed!");
   }
   return data.access_token;
 }
@@ -116,16 +137,22 @@ async function refreshToken() {
 async function getToken() {
   const expiry = parseInt(localStorage.getItem("spotify_token_expiry") || "0");
   if (Date.now() > expiry - 60_000) {
+    console.log("⏰ Token expired, refreshing...");
     return await refreshToken();
   }
-  return localStorage.getItem("spotify_token");
+  const token = localStorage.getItem("spotify_token");
+  if (!token) console.warn("⚠️ No token found!");
+  return token;
 }
 
 export function isLoggedIn() {
-  return !!localStorage.getItem("spotify_token");
+  const logged = !!localStorage.getItem("spotify_token");
+  console.log("🔍 isLoggedIn:", logged);
+  return logged;
 }
 
 export function logout() {
+  console.log("🚪 Logging out...");
   localStorage.removeItem("spotify_token");
   localStorage.removeItem("spotify_refresh_token");
   localStorage.removeItem("spotify_token_expiry");
@@ -135,19 +162,25 @@ export function logout() {
 async function api(endpoint, options = {}) {
   const token = await getToken();
 
-  const res = await fetch(
-    endpoint.startsWith("http")
-      ? endpoint
-      : `https://api.spotify.com/v1${endpoint}`,
-    {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
+  if (!token) {
+    console.error("❌ API call without token!");
+    throw new Error("No token available");
+  }
+
+  const fullUrl = endpoint.startsWith("http")
+    ? endpoint
+    : `https://api.spotify.com/v1${endpoint}`;
+
+  console.log(`📡 API ${options.method || "GET"} ${fullUrl}`);
+
+  const res = await fetch(fullUrl, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...options.headers,
     },
-  );
+  });
 
   if (res.status === 204 || res.status === 202) return null;
 
@@ -158,19 +191,16 @@ async function api(endpoint, options = {}) {
     try {
       data = JSON.parse(text);
     } catch (e) {
-      console.warn("API nie zwróciło poprawnego JSONa:", text);
+      console.warn("⚠️ Failed to parse JSON:", text);
     }
   }
 
   if (!res.ok) {
-    if (res.status === 429) {
-      console.error("RATE LIMIT SPOTIFY! Musisz odczekać parę minut.");
-    } else {
-      console.error("Spotify API error:", res.status, data);
-    }
+    console.error(`❌ API error ${res.status}:`, data);
     throw new Error(`Spotify API error: ${res.status}`);
   }
 
+  console.log("✅ API success");
   return data;
 }
 
@@ -293,20 +323,9 @@ export async function transferPlayback(deviceId) {
   });
 }
 
-// Search with debugging
 export async function searchSpotify(query, type = "track", limit = 20) {
-  try {
-    // Build endpoint with proper encoding
-    const endpoint = `/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${limit}`;
-    console.log("🔍 Searching with endpoint:", endpoint);
-    
-    const result = await api(endpoint);
-    console.log("✅ Search successful:", result);
-    return result;
-  } catch (err) {
-    console.error("❌ Search failed:", err);
-    throw err;
-  }
+  const endpoint = `/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${limit}`;
+  return await api(endpoint);
 }
 
 export async function createPlaylist(name, description = "", isPublic = false) {
