@@ -322,17 +322,18 @@ export async function transferPlayback(deviceId) {
     }),
   });
 }
-
 export async function searchSpotify(query, type = "track", limit = 20) {
-  // Usuwamy wszystko, co nie jest literą lub cyfrą, żeby nie było błędów
-  const cleanQuery = query.replace(/[^a-zA-Z0-9 ]/g, "");
+  // 1. Zablokuj wysyłanie pustych zapytań
+  if (!query || query.trim() === "") return { tracks: { items: [] } };
 
+  // 2. Poprawne kodowanie parametrów
   const params = new URLSearchParams({
-    q: cleanQuery,
+    q: query,
     type: type,
     limit: limit,
   });
 
+  // 3. Upewnij się, że używamy api(), która sama dodaje nagłówek Authorization
   return await api(`/search?${params.toString()}`);
 }
 
