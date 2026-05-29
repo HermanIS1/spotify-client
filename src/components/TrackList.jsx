@@ -1,25 +1,12 @@
+import { useState } from "react";
+
 function TrackArt({ src, alt }) {
   return (
     <div className="track-art">
       {src ? (
-        <img
-          src={src}
-          alt={alt}
-          onError={(e) => {
-            e.target.style.display = "none";
-          }}
-        />
+        <img src={src} alt={alt} onError={(e) => { e.target.style.display = "none"; }} />
       ) : (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--g3)",
-          }}
-        >
+        <div className="track-art track-art--icon">
           <i className="ti ti-music" />
         </div>
       )}
@@ -33,75 +20,101 @@ export default function TrackList({
   isPlaying,
   onPlay,
   onAddToPlaylist,
+  onRemoveTrack,
+  onPlayAll,
+  onSaveTrack,
+  onRemoveFromLiked,
+  onRenamePlaylist,
+  onDeletePlaylist,
+  onLoadMore,
+  hasMoreLiked,
+  likedTotal,
+  loadingMore,
 }) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+
   if (!playlist) return null;
 
+  const isLiked = playlist.id === "liked";
+  const isPlaylist = !isLiked;
+
+  function startRename() {
+    setNameDraft(playlist.name);
+    setEditingName(true);
+  }
+
+  function submitRename() {
+    if (nameDraft.trim() && onRenamePlaylist) {
+      onRenamePlaylist(nameDraft.trim());
+    }
+    setEditingName(false);
+  }
+
   return (
-    <div
-      className="app-main panel-glow"
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        background: "var(--bg-glass)",
-      }}
-    >
-      <div
-        style={{
-          padding: "20px 24px 16px",
-          borderBottom: "var(--border)",
-          flexShrink: 0,
-          background:
-            "linear-gradient(180deg, rgba(77, 187, 110, 0.06) 0%, transparent 100%)",
-        }}
-      >
-        <div className="title-gothic glow-text" style={{ fontSize: 28, marginBottom: 6 }}>
-          {playlist.name}
+    <div className="app-main panel-glow track-list-main">
+      <div className="track-list-header">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {editingName ? (
+            <input
+              className="input"
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={submitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitRename();
+                if (e.key === "Escape") setEditingName(false);
+              }}
+              autoFocus
+              style={{ fontSize: 18, marginBottom: 6 }}
+            />
+          ) : (
+            <div className="title-gothic glow-text track-list-title">{playlist.name}</div>
+          )}
+          <div className="track-list-meta">
+            {playlist.tracks.length}
+            {likedTotal ? ` / ${likedTotal}` : ""} TRACKS
+            <span className="cursor"> █</span>
+          </div>
         </div>
-        <div style={{ fontSize: 11, color: "var(--g3)", letterSpacing: "0.15em" }}>
-          {playlist.tracks.length} TRACKS
-          <span className="cursor" style={{ marginLeft: 4 }}>
-            █
-          </span>
+
+        <div className="track-list-actions">
+          {playlist.tracks.length > 0 && onPlayAll && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onPlayAll} title="Odtwórz wszystko">
+              <i className="ti ti-player-play" />
+            </button>
+          )}
+          {isPlaylist && onRenamePlaylist && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={startRename} title="Zmień nazwę">
+              <i className="ti ti-pencil" />
+            </button>
+          )}
+          {isPlaylist && onDeletePlaylist && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm btn-danger"
+              onClick={onDeletePlaylist}
+              title="Usuń playlistę"
+            >
+              <i className="ti ti-trash" />
+            </button>
+          )}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+      <div className="track-list-scroll">
         {playlist.tracks.length === 0 ? (
-          <div
-            style={{
-              padding: 48,
-              textAlign: "center",
-              color: "var(--g3)",
-              fontSize: 12,
-              letterSpacing: "0.1em",
-            }}
-          >
-            BRAK UTWORÓW
-          </div>
+          <div className="track-list-empty">BRAK UTWORÓW</div>
         ) : (
           playlist.tracks.map((track, i) => {
             const isActive = track.id === currentTrackId;
             return (
-              <div
-                key={`${track.id}-${i}`}
-                className={`track-row ${isActive ? "active" : ""}`}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--g3)",
-                    width: 22,
-                    textAlign: "right",
-                    flexShrink: 0,
-                  }}
-                  onClick={() => onPlay(track, i)}
-                >
+              <div key={`${track.id}-${i}`} className={`track-row ${isActive ? "active" : ""}`}>
+                <div className="track-index" onClick={() => onPlay(track, i)}>
                   {isActive && isPlaying ? (
-                    <i className="ti ti-player-play" style={{ color: "var(--g-glow)" }} />
+                    <i className="ti ti-player-play track-index-play" />
                   ) : (
-                    <span style={{ opacity: isActive ? 1 : 0.6 }}>{i + 1}</span>
+                    <span>{i + 1}</span>
                   )}
                 </div>
 
@@ -109,54 +122,84 @@ export default function TrackList({
                   <TrackArt src={track.image} alt={track.name} />
                 </div>
 
-                <div
-                  style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
-                  onClick={() => onPlay(track, i)}
-                >
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: isActive ? "var(--g-glow)" : "var(--g2)",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {track.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--g3)",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {track.artist}
-                  </div>
+                <div className="track-info" onClick={() => onPlay(track, i)}>
+                  <div className={`track-name ${isActive ? "active" : ""}`}>{track.name}</div>
+                  <div className="track-artist">{track.artist}</div>
                 </div>
 
-                <div style={{ fontSize: 11, color: "var(--g3)", flexShrink: 0 }}>
-                  {track.duration}
-                </div>
+                <div className="track-duration">{track.duration}</div>
 
-                {onAddToPlaylist && playlist.id !== "liked" && (
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    title="Dodaj do innej playlisty"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onAddToPlaylist(track);
-                    }}
-                  >
-                    <i className="ti ti-playlist-add" />
-                  </button>
-                )}
+                <div className="track-row-actions">
+                  {isLiked && onRemoveFromLiked && (
+                    <button
+                      type="button"
+                      className="btn-icon active"
+                      title="Usuń z polubionych"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveFromLiked(track);
+                      }}
+                    >
+                      <i className="ti ti-heart-filled" />
+                    </button>
+                  )}
+                  {onSaveTrack && !isLiked && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      title="Polub"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSaveTrack(track);
+                      }}
+                    >
+                      <i className="ti ti-heart" />
+                    </button>
+                  )}
+                  {onAddToPlaylist && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      title="Dodaj do playlisty"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToPlaylist(track);
+                      }}
+                    >
+                      <i className="ti ti-playlist-add" />
+                    </button>
+                  )}
+                  {isPlaylist && onRemoveTrack && (
+                    <button
+                      type="button"
+                      className="btn-icon btn-danger-icon"
+                      title="Usuń z playlisty"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveTrack(track);
+                      }}
+                    >
+                      <i className="ti ti-trash" />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })
+        )}
+
+        {isLiked && hasMoreLiked && onLoadMore && (
+          <div style={{ padding: "16px 20px" }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ width: "100%" }}
+              disabled={loadingMore}
+              onClick={onLoadMore}
+            >
+              {loadingMore ? "Ładowanie..." : "Załaduj więcej polubionych"}
+            </button>
+          </div>
         )}
       </div>
     </div>

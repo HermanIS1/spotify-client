@@ -15,9 +15,11 @@ import {
   redirectToLogin,
   exchangeCodeForToken,
   getLikedTracks,
+  fetchLikedPage,
   getPlaylists,
   getPlaylistTracks,
   playTrackOnSpotify,
+  playContext,
   pauseSpotify,
   resumeSpotify,
   nextSpotify,
@@ -28,6 +30,13 @@ import {
   logout,
   transferPlayback,
   addTracksToPlaylist,
+  removeTracksFromPlaylist,
+  updatePlaylistDetails,
+  unfollowPlaylist,
+  saveTracksToLibrary,
+  removeTracksFromLibrary,
+  setPlayerShuffle,
+  setPlayerRepeat,
 } from "./spotify";
 
 function parseDuration(dur) {
@@ -43,15 +52,8 @@ function LoginScreen() {
         <div className="title-gothic glow-text" style={{ fontSize: 52, marginBottom: 8 }}>
           Spotify
         </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--g3)",
-            letterSpacing: "0.25em",
-            marginBottom: 28,
-          }}
-        >
-          NEURAL AUDIO INTERFACE
+        <div style={{ fontSize: 11, color: "var(--g3)", letterSpacing: "0.25em", marginBottom: 28 }}>
+          LIGHTWEIGHT AUDIO CLIENT
         </div>
         <button type="button" className="btn btn-primary" onClick={redirectToLogin}>
           POŁĄCZ Z SPOTIFY
@@ -72,15 +74,7 @@ function LoadingScreen({ message, hint }) {
           {message} <span className="cursor">█</span>
         </div>
         {hint && (
-          <div
-            style={{
-              marginTop: 16,
-              fontSize: 10,
-              color: "var(--g4)",
-              maxWidth: 280,
-              lineHeight: 1.5,
-            }}
-          >
+          <div style={{ marginTop: 16, fontSize: 10, color: "var(--g4)", maxWidth: 280, lineHeight: 1.5 }}>
             {hint}
           </div>
         )}
@@ -94,9 +88,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
   const [loadingHint, setLoadingHint] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const [playlists, setPlaylists] = useState([]);
   const [likedTracks, setLikedTracks] = useState([]);
+  const [likedTotal, setLikedTotal] = useState(0);
+  const [likedNextUrl, setLikedNextUrl] = useState(null);
   const [trackCache, setTrackCache] = useState({});
 
   const [currentView, setCurrentView] = useState("liked");
@@ -114,7 +111,7 @@ export default function App() {
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
 
-  const [addModalTrack, setAddModalTrack] = useState(null);
+  const [addModalTracks, setAddModalTracks] = useState(null);
   const [addModalLoading, setAddModalLoading] = useState(false);
   const [toast, setToast] = useState(null);
 
@@ -133,7 +130,6 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
-
     if (code) {
       window.history.replaceState({}, "", "/");
       setLoading(true);
@@ -147,7 +143,6 @@ export default function App() {
 
   useEffect(() => {
     if (!loggedIn) return;
-
     const token = localStorage.getItem("spotify_token");
     if (!token) return;
 
@@ -159,21 +154,14 @@ export default function App() {
     window.onSpotifyWebPlaybackSDKReady = () => {
       const spotifyPlayer = new window.Spotify.Player({
         name: "HermanOS Client",
-        getOAuthToken: (cb) => {
-          cb(localStorage.getItem("spotify_token") || token);
-        },
-        volume: 0.5,
+        getOAuthToken: (cb) => cb(localStorage.getItem("spotify_token") || token),
+        volume: Number(localStorage.getItem("spotify_volume") || 50) / 100,
       });
-
       setPlayer(spotifyPlayer);
-
       spotifyPlayer.addListener("ready", ({ device_id }) => {
         setDeviceId(device_id);
-        transferPlayback(device_id).catch((err) =>
-          console.error("Transfer error:", err),
-        );
+        transferPlayback(device_id).catch(console.error);
       });
-
       spotifyPlayer.connect();
     };
 
@@ -188,6 +176,24 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
+  useEffect(() => {
+    if (!loggedIn || loading) return;
+
+    function onKeyDown(e) {
+      if (e.target.matches("input, textarea")) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        handleTogglePlay();
+      }
+      if (e.code === "ArrowRight") handleNext();
+      if (e.code === "ArrowLeft") handlePrev();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn, loading, currentTrack, isPlaying]);
+
   async function loadLibrary() {
     setLoading(true);
     setLoadingHint("");
@@ -199,19 +205,17 @@ export default function App() {
           if (total) setLoadingHint(`${loaded} / ${total} utworów`);
         },
       });
-      setLikedTracks(liked);
-      setCurrentTracks(liked);
+      setLikedTracks(liked.tracks);
+      setLikedTotal(liked.total);
+      setLikedNextUrl(liked.hasMore ? liked.nextUrl : null);
+      setCurrentTracks(liked.tracks);
 
       setLoadingMsg("SYNC.PLAYLISTS");
       setLoadingHint("");
-      const pls = await getPlaylists();
-      setPlaylists(pls);
+      setPlaylists(await getPlaylists());
     } catch (err) {
       console.error("Library sync failed:", err);
-      const msg = err.message || "Błąd synchronizacji";
-      showToast(msg, "error");
-      setLoadingHint(msg);
-      // Still open the app so they are not stuck on this screen
+      showToast(err.message || "Błąd synchronizacji", "error");
       setLikedTracks([]);
       setCurrentTracks([]);
       setPlaylists([]);
@@ -230,13 +234,11 @@ export default function App() {
 
   async function handleSelectView(id) {
     setCurrentView(id);
-
     if (id === "liked") {
       setCurrentTracks(likedTracks);
       setCurrentPlaylistUri(null);
       return;
     }
-
     if (trackCache[id]) {
       setCurrentTracks(trackCache[id]);
     } else {
@@ -252,7 +254,6 @@ export default function App() {
         setLoading(false);
       }
     }
-
     const pl = playlists.find((p) => p.id === id);
     setCurrentPlaylistUri(pl?.uri || null);
   }
@@ -264,11 +265,10 @@ export default function App() {
     setCurrentSec(0);
     setProgress(0);
     totalSecRef.current = parseDuration(track.duration);
-
     try {
       await playTrackOnSpotify(track.uri, currentPlaylistUri, deviceId);
     } catch (err) {
-      console.warn("Playback error:", err);
+      showToast("Nie udało się odtworzyć", "error");
     }
   }
 
@@ -281,36 +281,144 @@ export default function App() {
     setCurrentSec(0);
     setProgress(0);
     totalSecRef.current = parseDuration(track.duration);
-
     try {
       await playTrackOnSpotify(track.uri, null, deviceId);
     } catch (err) {
-      console.warn("Playback error:", err);
       showToast("Nie udało się odtworzyć utworu", "error");
     }
   }
 
-  async function handleAddTrackToPlaylist(playlistId) {
-    if (!addModalTrack) return;
+  async function handlePlayAll() {
+    if (!currentTracks.length) return;
+    const uri =
+      currentView === "liked"
+        ? null
+        : playlists.find((p) => p.id === currentView)?.uri;
+    if (uri) {
+      try {
+        await playContext(uri, deviceId, currentTracks[0].uri);
+        handlePlayTrack(currentTracks[0], 0);
+      } catch {
+        handlePlayTrack(currentTracks[0], 0);
+      }
+    } else {
+      handlePlayTrack(currentTracks[0], 0);
+    }
+  }
 
+  async function handleAddToPlaylist(playlistId) {
+    if (!addModalTracks?.length) return;
     setAddModalLoading(true);
     try {
-      await addTracksToPlaylist(playlistId, [addModalTrack.uri]);
+      const uris = addModalTracks.map((t) => t.uri);
+      await addTracksToPlaylist(playlistId, uris);
       const pl = playlists.find((p) => p.id === playlistId);
       await refreshPlaylistTracks(playlistId);
-      showToast(`Dodano do „${pl?.name || "playlisty"}"`);
-      setAddModalTrack(null);
+      showToast(
+        uris.length === 1
+          ? `Dodano do „${pl?.name || "playlisty"}"`
+          : `Dodano ${uris.length} utworów do „${pl?.name}"`,
+      );
+      setAddModalTracks(null);
     } catch (err) {
-      console.error("Add to playlist:", err);
-      showToast(err.message || "Nie udało się dodać utworu", "error");
+      showToast(err.message || "Nie udało się dodać", "error");
     } finally {
       setAddModalLoading(false);
     }
   }
 
+  async function handleRemoveFromPlaylist(track) {
+    if (currentView === "liked") return;
+    try {
+      await removeTracksFromPlaylist(currentView, [track.uri]);
+      const next = currentTracks.filter((t) => t.id !== track.id);
+      setCurrentTracks(next);
+      setTrackCache((prev) => ({ ...prev, [currentView]: next }));
+      if (currentTrack?.id === track.id) setCurrentTrack(null);
+      showToast("Usunięto z playlisty");
+    } catch (err) {
+      showToast(err.message || "Nie udało się usunąć", "error");
+    }
+  }
+
+  async function handleSaveTrack(track) {
+    try {
+      await saveTracksToLibrary([track.uri]);
+      showToast("Dodano do polubionych");
+    } catch (err) {
+      showToast(err.message || "Polubienie niedostępne (dev mode?)", "error");
+    }
+  }
+
+  async function handleRemoveFromLiked(track) {
+    try {
+      await removeTracksFromLibrary([track.uri]);
+      const next = likedTracks.filter((t) => t.id !== track.id);
+      setLikedTracks(next);
+      if (currentView === "liked") setCurrentTracks(next);
+      setLikedTotal((n) => Math.max(0, n - 1));
+      if (currentTrack?.id === track.id) setCurrentTrack(null);
+      showToast("Usunięto z polubionych");
+    } catch (err) {
+      showToast(err.message || "Nie udało się usunąć", "error");
+    }
+  }
+
+  async function handleLoadMoreLiked() {
+    if (!likedNextUrl || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchLikedPage(likedNextUrl);
+      setLikedTracks((prev) => [...prev, ...page.tracks]);
+      if (currentView === "liked") {
+        setCurrentTracks((prev) => [...prev, ...page.tracks]);
+      }
+      setLikedNextUrl(page.next);
+      setLikedTotal(page.total);
+      showToast(`Załadowano +${page.tracks.length} utworów`);
+    } catch (err) {
+      showToast(err.message || "Błąd ładowania", "error");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function handleRenamePlaylist(name) {
+    if (currentView === "liked") return;
+    try {
+      await updatePlaylistDetails(currentView, { name });
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === currentView ? { ...p, name } : p)),
+      );
+      showToast("Zmieniono nazwę playlisty");
+    } catch (err) {
+      showToast(err.message || "Nie udało się zmienić nazwy", "error");
+    }
+  }
+
+  async function handleDeletePlaylist() {
+    if (currentView === "liked") return;
+    const pl = playlists.find((p) => p.id === currentView);
+    if (!window.confirm(`Usunąć playlistę „${pl?.name}"?`)) return;
+    try {
+      await unfollowPlaylist(currentView);
+      setPlaylists((prev) => prev.filter((p) => p.id !== currentView));
+      setTrackCache((prev) => {
+        const next = { ...prev };
+        delete next[currentView];
+        return next;
+      });
+      setCurrentView("liked");
+      setCurrentTracks(likedTracks);
+      setCurrentPlaylistUri(null);
+      showToast("Playlista usunięta");
+    } catch (err) {
+      showToast(err.message || "Nie udało się usunąć playlisty", "error");
+    }
+  }
+
   useEffect(() => {
     clearInterval(intervalRef.current);
-
     if (isPlaying && currentTrack) {
       intervalRef.current = setInterval(() => {
         setCurrentSec((prev) => {
@@ -325,14 +433,12 @@ export default function App() {
         });
       }, 1000);
     }
-
     return () => clearInterval(intervalRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, currentTrack, isRepeat]);
 
   useEffect(() => {
     if (!loggedIn) return;
-
     syncInterval.current = setInterval(async () => {
       try {
         const state = await getPlaybackState();
@@ -344,10 +450,9 @@ export default function App() {
           setProgress(sec / totalSecRef.current);
         }
       } catch {
-        /* sync optional */
+        /* optional */
       }
     }, 5000);
-
     return () => clearInterval(syncInterval.current);
   }, [loggedIn]);
 
@@ -368,9 +473,9 @@ export default function App() {
 
   const handleNext = useCallback(async () => {
     if (!currentTracks.length) return;
-    let nextIdx;
-    if (isShuffle) nextIdx = Math.floor(Math.random() * currentTracks.length);
-    else nextIdx = (currentIdx + 1) % currentTracks.length;
+    const nextIdx = isShuffle
+      ? Math.floor(Math.random() * currentTracks.length)
+      : (currentIdx + 1) % currentTracks.length;
     handlePlayTrack(currentTracks[nextIdx], nextIdx);
     try {
       await nextSpotify();
@@ -392,8 +497,7 @@ export default function App() {
       }
       return;
     }
-    const prevIdx =
-      (currentIdx - 1 + currentTracks.length) % currentTracks.length;
+    const prevIdx = (currentIdx - 1 + currentTracks.length) % currentTracks.length;
     handlePlayTrack(currentTracks[prevIdx], prevIdx);
     try {
       await prevSpotify();
@@ -414,6 +518,7 @@ export default function App() {
   }
 
   async function handleVolume(val) {
+    localStorage.setItem("spotify_volume", String(val));
     if (volumeTimeoutRef.current) clearTimeout(volumeTimeoutRef.current);
     volumeTimeoutRef.current = setTimeout(async () => {
       try {
@@ -422,6 +527,26 @@ export default function App() {
         console.warn("Volume error:", err);
       }
     }, 300);
+  }
+
+  async function handleToggleShuffle() {
+    const next = !isShuffle;
+    setIsShuffle(next);
+    try {
+      await setPlayerShuffle(next);
+    } catch {
+      /* local shuffle still works */
+    }
+  }
+
+  async function handleToggleRepeat() {
+    const next = !isRepeat;
+    setIsRepeat(next);
+    try {
+      await setPlayerRepeat(next ? "context" : "off");
+    } catch {
+      /* local repeat still works */
+    }
   }
 
   function handleLogout() {
@@ -447,10 +572,7 @@ export default function App() {
     currentView === "liked"
       ? { id: "liked", name: "Polubione utwory", tracks: likedTracks }
       : playlists.find((pl) => pl.id === currentView)
-        ? {
-            ...playlists.find((pl) => pl.id === currentView),
-            tracks: currentTracks,
-          }
+        ? { ...playlists.find((pl) => pl.id === currentView), tracks: currentTracks }
         : null;
 
   if (!loggedIn) return <LoginScreen />;
@@ -464,13 +586,9 @@ export default function App() {
         <div className="app-sidebar-col">
           <Search
             onPlayTrack={handlePlayFromSearch}
-            onAddToPlaylist={setAddModalTrack}
+            onAddTracks={(tracks) => setAddModalTracks(tracks)}
           />
-          <Sidebar
-            playlists={playlists}
-            currentView={currentView}
-            onSelect={handleSelectView}
-          />
+          <Sidebar playlists={playlists} currentView={currentView} onSelect={handleSelectView} />
           <CreatePlaylist onPlaylistCreated={handlePlaylistCreated} />
         </div>
 
@@ -479,7 +597,17 @@ export default function App() {
           currentTrackId={currentTrack?.id}
           isPlaying={isPlaying}
           onPlay={handlePlayTrack}
-          onAddToPlaylist={setAddModalTrack}
+          onAddToPlaylist={(track) => setAddModalTracks([track])}
+          onRemoveTrack={currentView !== "liked" ? handleRemoveFromPlaylist : undefined}
+          onPlayAll={handlePlayAll}
+          onSaveTrack={handleSaveTrack}
+          onRemoveFromLiked={currentView === "liked" ? handleRemoveFromLiked : undefined}
+          onRenamePlaylist={currentView !== "liked" ? handleRenamePlaylist : undefined}
+          onDeletePlaylist={currentView !== "liked" ? handleDeletePlaylist : undefined}
+          onLoadMore={currentView === "liked" ? handleLoadMoreLiked : undefined}
+          hasMoreLiked={Boolean(likedNextUrl)}
+          likedTotal={likedTotal}
+          loadingMore={loadingMore}
         />
       </div>
 
@@ -493,18 +621,18 @@ export default function App() {
         onTogglePlay={handleTogglePlay}
         onNext={handleNext}
         onPrev={handlePrev}
-        onToggleShuffle={() => setIsShuffle((p) => !p)}
-        onToggleRepeat={() => setIsRepeat((p) => !p)}
+        onToggleShuffle={handleToggleShuffle}
+        onToggleRepeat={handleToggleRepeat}
         onSeek={handleSeek}
         onVolume={handleVolume}
       />
 
       <AddToPlaylistModal
-        track={addModalTrack}
+        tracks={addModalTracks}
         playlists={playlists}
         loading={addModalLoading}
-        onSelect={handleAddTrackToPlaylist}
-        onClose={() => !addModalLoading && setAddModalTrack(null)}
+        onSelect={handleAddToPlaylist}
+        onClose={() => !addModalLoading && setAddModalTracks(null)}
       />
 
       <Toast message={toast?.message} type={toast?.type} />

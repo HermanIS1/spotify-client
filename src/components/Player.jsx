@@ -152,7 +152,7 @@ export default function Player({
             type="range"
             min="0"
             max="100"
-            defaultValue="80"
+            defaultValue={localStorage.getItem("spotify_volume") || "80"}
             onChange={(e) => onVolume(parseInt(e.target.value, 10))}
             style={{ width: 90, accentColor: "var(--g-glow)" }}
           />

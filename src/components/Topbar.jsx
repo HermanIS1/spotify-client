@@ -53,6 +53,8 @@ export default function Topbar({ onLogout }) {
         <span style={{ color: "var(--g2)" }}>ONLINE</span>
       </div>
 
+      <span className="kbd-hint">SPACE · ← →</span>
+
       <button type="button" className="btn btn-ghost" onClick={onLogout} style={{ padding: "6px 12px" }}>
         WYLOGUJ
       </button>
