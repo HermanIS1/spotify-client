@@ -7,7 +7,7 @@ import TrackList from "./components/TrackList";
 import Player from "./components/Player";
 import Search from "./components/Search";
 import CreatePlaylist from "./components/CreatePlaylist";
-
+const volumeTimeoutRef = useRef(null);
 import {
   isLoggedIn,
   redirectToLogin,
