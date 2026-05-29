@@ -1,7 +1,3 @@
-// App.jsx
-// Główny plik – zarządza stanem i łączy wszystkie komponenty
-// Teraz ze Spotify API i wbudowanym Web Playback SDK
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import "./styles/global.css";
 
@@ -9,6 +5,8 @@ import Topbar from "./components/Topbar";
 import Sidebar from "./components/Sidebar";
 import TrackList from "./components/TrackList";
 import Player from "./components/Player";
+import Search from "./components/Search";
+import CreatePlaylist from "./components/CreatePlaylist";
 
 import {
   isLoggedIn,
@@ -26,7 +24,10 @@ import {
   seekSpotify,
   getPlaybackState,
   logout,
-  transferPlayback, // ← DODANY IMPORT
+  transferPlayback,
+  searchSpotify,
+  createPlaylist,
+  addTracksToPlaylist,
 } from "./spotify";
 
 function parseDuration(dur) {
@@ -35,7 +36,7 @@ function parseDuration(dur) {
   return parseInt(m) * 60 + parseInt(s);
 }
 
-// ─── Ekran logowania ─────────────────────────────────────────────────────────
+// ─── Ekran logowania ───────────────────────────────────────────────────────
 function LoginScreen() {
   return (
     <div
@@ -87,7 +88,7 @@ function LoginScreen() {
   );
 }
 
-// ─── Ekran ładowania ─────────────────────────────────────────────────────────
+// ─── Ekran ładowania ───────────────────────────────────────────────────────
 function LoadingScreen({ message }) {
   return (
     <div
@@ -117,7 +118,7 @@ function LoadingScreen({ message }) {
   );
 }
 
-// ─── Główna aplikacja ────────────────────────────────────────────────────────
+// ─── Główna aplikacja ──────────────────────────────────────────────────────
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [loading, setLoading] = useState(false);
@@ -143,11 +144,14 @@ export default function App() {
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
 
+  // Zmienne stanu dla search i playlist
+  const [selectedTracks, setSelectedTracks] = useState([]);
+
   const intervalRef = useRef(null);
   const totalSecRef = useRef(0);
   const syncInterval = useRef(null);
 
-  // ── OAuth callback ──────────────────────────────────────────────────────────
+  // ── OAuth callback ────────────────────────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
@@ -280,7 +284,7 @@ export default function App() {
     }
   }
 
-  // ── Lokalny progres ─────────────────────────────────────────────────────────
+  // ── Lokalny progres ────────────────────────────────────────────────────────
   useEffect(() => {
     clearInterval(intervalRef.current);
 
@@ -325,7 +329,7 @@ export default function App() {
     return () => clearInterval(syncInterval.current);
   }, [loggedIn]);
 
-  // ── Kontrolki ────────────────────────────────────────────────────────────────
+  // ── Kontrolki ──────────────────────────────────────────────────────────────
   async function handleTogglePlay() {
     if (!currentTrack) {
       if (currentTracks.length > 0) handlePlayTrack(currentTracks[0], 0);
@@ -395,6 +399,28 @@ export default function App() {
     setCurrentTrack(null);
   }
 
+  // ── Obsługa search i playlist ──────────────────────────────────────────────
+  async function handleSelectTrack(track) {
+    setSelectedTracks([...selectedTracks, track]);
+  }
+
+  async function handlePlaylistCreated(playlist) {
+    // Add selected tracks to the new playlist
+    if (selectedTracks.length > 0) {
+      try {
+        const uris = selectedTracks.map((t) => t.uri);
+        await addTracksToPlaylist(playlist.id, uris);
+        setSelectedTracks([]);
+      } catch (err) {
+        console.error("Error adding tracks:", err);
+      }
+    }
+
+    // Reload playlists
+    const pls = await getPlaylists();
+    setPlaylists(pls);
+  }
+
   // ── Aktualnie wyświetlana playlista ─────────────────────────────────────────
   const activePlaylist =
     currentView === "liked"
@@ -423,11 +449,22 @@ export default function App() {
       <Topbar onLogout={handleLogout} />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar
-          playlists={playlists}
-          currentView={currentView}
-          onSelect={handleSelectView}
-        />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <Search onSelectTrack={handleSelectTrack} />
+          <Sidebar
+            playlists={playlists}
+            currentView={currentView}
+            onSelect={handleSelectView}
+          />
+          <CreatePlaylist onPlaylistCreated={handlePlaylistCreated} />
+        </div>
         <TrackList
           playlist={activePlaylist}
           currentTrackId={currentTrack?.id}

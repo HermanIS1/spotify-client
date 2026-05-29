@@ -1,10 +1,12 @@
 const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae"; // ← Twój Client ID
 const REDIRECT_URI = window.location.origin + "/callback";
 const SCOPES = [
-  "user-library-read", // polubione utwory
-  "playlist-read-private", // prywatne playlisty
+  "user-library-read",
+  "playlist-read-private",
   "playlist-read-collaborative",
-  "streaming", // odtwarzanie przez Web Playback SDK
+  "playlist-modify-public", // ← Keep these
+  "playlist-modify-private", // ← Keep these
+  "streaming",
   "user-read-email",
   "user-read-private",
   "user-read-playback-state",
@@ -312,5 +314,55 @@ export async function transferPlayback(deviceId) {
       device_ids: [deviceId],
       play: false, // false zapobiega automatycznemu puszczeniu muzyki przy starcie
     }),
+  });
+}
+
+// Search for tracks, playlists, or artists
+export async function searchSpotify(query, type = "track", limit = 20) {
+  const params = new URLSearchParams({
+    q: query,
+    type: type, // "track", "playlist", "artist", or combination: "track,playlist"
+    limit: limit,
+  });
+
+  return await api(`/search?${params}`);
+}
+
+// Create a new playlist
+export async function createPlaylist(name, description = "", isPublic = false) {
+  const data = await api("/me", { method: "GET" });
+  const userId = data.id;
+
+  return await api(`/users/${userId}/playlists`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: name,
+      description: description,
+      public: isPublic,
+    }),
+  });
+}
+
+// Add tracks to a playlist
+export async function addTracksToPlaylist(playlistId, trackUris) {
+  // Spotify API accepts max 100 tracks per request
+  const chunks = [];
+  for (let i = 0; i < trackUris.length; i += 100) {
+    chunks.push(trackUris.slice(i, i + 100));
+  }
+
+  for (const chunk of chunks) {
+    await api(`/playlists/${playlistId}/tracks`, {
+      method: "POST",
+      body: JSON.stringify({ uris: chunk }),
+    });
+  }
+}
+
+// Remove tracks from playlist
+export async function removeTracksFromPlaylist(playlistId, trackUris) {
+  await api(`/playlists/${playlistId}/tracks`, {
+    method: "DELETE",
+    body: JSON.stringify({ uris: trackUris }),
   });
 }
