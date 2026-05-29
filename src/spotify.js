@@ -1,4 +1,4 @@
-const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae"; // ← Twój Client ID
+const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae";
 const REDIRECT_URI = window.location.origin + "/callback";
 const SCOPES = [
   "user-library-read",
@@ -12,9 +12,6 @@ const SCOPES = [
   "user-read-playback-state",
   "user-modify-playback-state",
 ].join(" ");
-
-// ─── PKCE Auth Flow ────────────────────────────────────────────────────────
-// Bezpieczniejszy niż Implicit Flow, nie wymaga backendu
 
 function generateRandomString(length) {
   const chars =
@@ -135,8 +132,6 @@ export function logout() {
   localStorage.removeItem("spotify_verifier");
 }
 
-// ─── API helper ─────────────────────────────────────────────────────────
-
 async function api(endpoint, options = {}) {
   const token = await getToken();
 
@@ -178,8 +173,6 @@ async function api(endpoint, options = {}) {
 
   return data;
 }
-
-// ─── Dane ───────────────────────────────────────────────────────────
 
 export async function getLikedTracks() {
   let tracks = [];
@@ -244,8 +237,6 @@ export async function getPlaylistTracks(playlistId) {
   return tracks;
 }
 
-// ─── Odtwarzanie (Spotify Connect) ───────────────────────────────────────────
-
 export async function playTrackOnSpotify(trackUri, contextUri = null) {
   const body = contextUri
     ? { context_uri: contextUri, offset: { uri: trackUri } }
@@ -285,8 +276,6 @@ export async function getPlaybackState() {
   return await api("/me/player");
 }
 
-// Utils
-
 function msToMinSec(ms) {
   const totalSec = Math.floor(ms / 1000);
   const m = Math.floor(totalSec / 60);
@@ -304,14 +293,22 @@ export async function transferPlayback(deviceId) {
   });
 }
 
-// Search for tracks - FIXED
+// Search with debugging
 export async function searchSpotify(query, type = "track", limit = 20) {
-  const encodedQuery = encodeURIComponent(query);
-  const endpoint = `/search?q=${encodedQuery}&type=${type}&limit=${limit}`;
-  return await api(endpoint);
+  try {
+    // Build endpoint with proper encoding
+    const endpoint = `/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${limit}`;
+    console.log("🔍 Searching with endpoint:", endpoint);
+    
+    const result = await api(endpoint);
+    console.log("✅ Search successful:", result);
+    return result;
+  } catch (err) {
+    console.error("❌ Search failed:", err);
+    throw err;
+  }
 }
 
-// Create a new playlist
 export async function createPlaylist(name, description = "", isPublic = false) {
   const data = await api("/me", { method: "GET" });
   const userId = data.id;
@@ -326,7 +323,6 @@ export async function createPlaylist(name, description = "", isPublic = false) {
   });
 }
 
-// Add tracks to a playlist
 export async function addTracksToPlaylist(playlistId, trackUris) {
   const chunks = [];
   for (let i = 0; i < trackUris.length; i += 100) {
@@ -341,7 +337,6 @@ export async function addTracksToPlaylist(playlistId, trackUris) {
   }
 }
 
-// Remove tracks from playlist
 export async function removeTracksFromPlaylist(playlistId, trackUris) {
   await api(`/playlists/${playlistId}/tracks`, {
     method: "DELETE",
