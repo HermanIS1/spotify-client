@@ -231,19 +231,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
-  async function loadLibrary() {
+async function loadLibrary() {
     setLoading(true);
+    try {
+      setLoadingMsg("pobieranie polubionych...");
+      const liked = await getLikedTracks();
+      setLikedTracks(liked);
+      setCurrentTracks(liked);
 
-    setLoadingMsg("pobieranie polubionych...");
-    const liked = await getLikedTracks();
-    setLikedTracks(liked);
-    setCurrentTracks(liked);
-
-    setLoadingMsg("pobieranie playlist...");
-    const pls = await getPlaylists();
-    setPlaylists(pls);
-
-    setLoading(false);
+      setLoadingMsg("pobieranie playlist...");
+      const pls = await getPlaylists();
+      setPlaylists(pls);
+    } catch (err) {
+      console.error("🚨 Błąd podczas pobierania biblioteki (np. brak Premium):", err);
+    } finally {
+      // To gwarantuje, że ekran ładowania ZAWSZE zniknie, niezależnie od błędów
+      setLoading(false); 
+    }
   }
 
   // ── Zmiana widoku (sidebar) ─────────────────────────────────────────────────
