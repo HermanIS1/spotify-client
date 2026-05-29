@@ -324,13 +324,16 @@ export async function transferPlayback(deviceId) {
 }
 
 export async function searchSpotify(query, type = "track", limit = 20) {
+  // Usuwamy wszystko, co nie jest literą lub cyfrą, żeby nie było błędów
+  const cleanQuery = query.replace(/[^a-zA-Z0-9 ]/g, "");
+
   const params = new URLSearchParams({
-    q: encodeURIComponent(query), // <--- Tutaj jest kluczowa poprawka!
+    q: cleanQuery,
     type: type,
     limit: limit,
   });
 
-  return await api(`/search?${params.toString()}`); // <--- I tutaj użyj .toString()
+  return await api(`/search?${params.toString()}`);
 }
 
 export async function addTracksToPlaylist(playlistId, trackUris) {
