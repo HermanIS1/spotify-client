@@ -1,4 +1,4 @@
-const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae";
+const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
 const REDIRECT_URI = window.location.origin + "/callback";
 const BASE_URL = "https://api.spotify.com/v1";
 
@@ -17,7 +17,8 @@ const SCOPES = [
 ].join(" ");
 
 function generateRandomString(length) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   return Array.from(crypto.getRandomValues(new Uint8Array(length)))
     .map((b) => chars[b % chars.length])
     .join("");
@@ -67,7 +68,10 @@ export async function exchangeCodeForToken(code) {
   if (data.access_token) {
     localStorage.setItem("spotify_token", data.access_token);
     localStorage.setItem("spotify_refresh_token", data.refresh_token);
-    localStorage.setItem("spotify_token_expiry", Date.now() + data.expires_in * 1000);
+    localStorage.setItem(
+      "spotify_token_expiry",
+      Date.now() + data.expires_in * 1000,
+    );
   }
   return data;
 }
@@ -113,7 +117,9 @@ async function api(endpoint, options = {}) {
   const token = localStorage.getItem("spotify_token");
   if (!token) throw new Error("No token available");
 
-  const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
+  const fullUrl = endpoint.startsWith("http")
+    ? endpoint
+    : `${BASE_URL}${endpoint}`;
   const headers = { Authorization: `Bearer ${token}`, ...options.headers };
   if (options.body) headers["Content-Type"] = "application/json";
 
@@ -153,7 +159,10 @@ export function mapApiTrack(track) {
   };
 }
 
-export async function searchSpotify(query, { type = "track", limit = 10, offset = 0 } = {}) {
+export async function searchSpotify(
+  query,
+  { type = "track", limit = 10, offset = 0 } = {},
+) {
   if (!query || typeof query !== "string" || query.trim() === "") {
     return { tracks: { items: [], total: 0 } };
   }
@@ -177,7 +186,11 @@ export async function fetchLikedPage(url = "/me/tracks?limit=50") {
   return { tracks, total: data?.total ?? 0, next: data?.next || null };
 }
 
-export async function getLikedTracks({ maxTracks = 50, onProgress, startUrl } = {}) {
+export async function getLikedTracks({
+  maxTracks = 50,
+  onProgress,
+  startUrl,
+} = {}) {
   let url = startUrl || "/me/tracks?limit=50";
   let collected = [];
   let total = 0;
@@ -239,7 +252,10 @@ export async function createPlaylist(name, description = "", isPublic = false) {
   });
 }
 
-export async function updatePlaylistDetails(playlistId, { name, description, public: isPublic }) {
+export async function updatePlaylistDetails(
+  playlistId,
+  { name, description, public: isPublic },
+) {
   const body = {};
   if (name !== undefined) body.name = name;
   if (description !== undefined) body.description = description;
@@ -286,20 +302,32 @@ export async function removeTracksFromLibrary(uris) {
   });
 }
 
-export async function playTrackOnSpotify(trackUri, contextUri = null, deviceId = null) {
+export async function playTrackOnSpotify(
+  trackUri,
+  contextUri = null,
+  deviceId = null,
+) {
   const body = contextUri
     ? { context_uri: contextUri, offset: { uri: trackUri } }
     : { uris: [trackUri] };
 
-  const url = deviceId ? `/me/player/play?device_id=${deviceId}` : "/me/player/play";
+  const url = deviceId
+    ? `/me/player/play?device_id=${deviceId}`
+    : "/me/player/play";
   await api(url, { method: "PUT", body: JSON.stringify(body) });
 }
 
-export async function playContext(contextUri, deviceId = null, offsetUri = null) {
+export async function playContext(
+  contextUri,
+  deviceId = null,
+  offsetUri = null,
+) {
   const body = offsetUri
     ? { context_uri: contextUri, offset: { uri: offsetUri } }
     : { context_uri: contextUri };
-  const url = deviceId ? `/me/player/play?device_id=${deviceId}` : "/me/player/play";
+  const url = deviceId
+    ? `/me/player/play?device_id=${deviceId}`
+    : "/me/player/play";
   await api(url, { method: "PUT", body: JSON.stringify(body) });
 }
 
