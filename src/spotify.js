@@ -1,5 +1,5 @@
 const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae";
-const REDIRECT_URI = window.location.origin;
+const REDIRECT_URI = window.location.origin; // Czysty adres, zapobiega pętlom przekierowań
 const BASE_URL = "https://api.spotify.com/v1";
 
 const SCOPES = [
@@ -15,6 +15,7 @@ const SCOPES = [
   "user-modify-playback-state",
 ].join(" ");
 
+// --- Pomocnicze funkcje autoryzacji ---
 function generateRandomString(length) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   return Array.from(crypto.getRandomValues(new Uint8Array(length)))
@@ -31,6 +32,7 @@ async function generateCodeChallenge(verifier) {
     .replace(/=/g, "");
 }
 
+// --- Autoryzacja ---
 export async function redirectToLogin() {
   const verifier = generateRandomString(128);
   const challenge = await generateCodeChallenge(verifier);
@@ -72,133 +74,129 @@ export async function exchangeCodeForToken(code) {
   return data;
 }
 
-async function refreshToken() {
-  const refresh = localStorage.getItem("spotify_refresh_token");
-  if (!refresh) { window.location.reload(); return null; }
-
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refresh,
-      client_id: CLIENT_ID,
-    }),
-  });
-
-  const data = await res.json();
-  if (data.access_token) {
-    localStorage.setItem("spotify_token", data.access_token);
-    localStorage.setItem("spotify_token_expiry", Date.now() + data.expires_in * 1000);
-    return data.access_token;
-  }
-
-  window.location.reload();
-  return null;
-}
-
+// --- Główna funkcja API ---
 async function api(endpoint, options = {}) {
-  let token = localStorage.getItem("spotify_token");
-  const expiry = localStorage.getItem("spotify_token_expiry");
-
-  if (expiry && Date.now() > parseInt(expiry) - 60_000) {
-    token = await refreshToken();
-  }
-
+  const token = localStorage.getItem("spotify_token");
   if (!token) throw new Error("No token available");
 
   const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
+  
+  const headers = {
+    Authorization: `Bearer ${token}`
+  };
+
+  // KLUCZOWE: Spotify API rzuca błąd 400 na wyszukiwarce, jeśli dodasz Content-Type do zapytań GET.
+  // Dodajemy ten nagłówek TYLKO dla modyfikacji danych (POST, PUT, DELETE).
+  if (options.method && ["POST", "PUT", "DELETE"].includes(options.method)) {
+    headers["Content-Type"] = "application/json";
+  }
 
   const res = await fetch(fullUrl, {
     ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers: { ...headers, ...options.headers },
   });
 
   if (res.status === 204 || res.status === 202) return null;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
+  
+  if (!res.ok) {
+    const errorMsg = data?.error?.message || "Brak detali z API";
+    console.error(`🚨 Błąd API [${res.status}]:`, errorMsg);
+    throw new Error(`Spotify API error ${res.status}: ${errorMsg}`);
+  }
+  
   return data;
 }
 
+// --- Wyszukiwarka (Już bez błędu 400) ---
 export async function searchSpotify(query, type = "track", limit = 20) {
-  // 1. Zabezpieczenie przed pustym zapytaniem
   if (!query || typeof query !== 'string' || query.trim() === "") {
     return { tracks: { items: [] } };
   }
-
-  // 2. Ręczne, bezpieczne kodowanie (zamienia spacje na %20 itp.)
-  const safeQuery = encodeURIComponent(query.trim());
   
-  // 3. Twardy URL bez żadnej magii - to musi przejść
-  return await api(`/search?q=${safeQuery}&type=${type}&limit=20&market=PL`);
+  const safeQuery = encodeURIComponent(query.trim());
+  return await api(`/search?q=${safeQuery}&type=${type}&limit=${limit}`);
 }
 
+// --- Biblioteka i Playlisty ---
 export async function getLikedTracks() {
   let tracks = [];
   let url = "/me/tracks?limit=50";
-
+  
   while (url) {
-    const data = await api(url);
-    if (!data || !data.items) break;
-
-    const mapped = data.items.map(({ track }) => ({
-      id: track.id,
-      name: track.name,
-      uri: track.uri,
-      artist: track.artists.map((a) => a.name).join(", "),
-      duration: msToMinSec(track.duration_ms),
-      image: track.album.images[1]?.url || track.album.images[0]?.url,
-    }));
-    tracks = [...tracks, ...mapped];
-    url = data.next ? data.next : null;
+    try {
+      const data = await api(url);
+      if (!data || !data.items) break;
+      
+      const mapped = data.items.map(({ track }) => ({
+        id: track.id,
+        name: track.name,
+        uri: track.uri,
+        artist: track.artists.map((a) => a.name).join(", "),
+        duration: msToMinSec(track.duration_ms),
+        image: track.album.images[1]?.url || track.album.images[0]?.url,
+      }));
+      tracks = [...tracks, ...mapped];
+      url = data.next ? data.next : null;
+    } catch (err) {
+      console.warn("Błąd podczas pobierania polubionych:", err);
+      break;
+    }
   }
   return tracks;
 }
 
 export async function getPlaylists() {
-  const data = await api("/me/playlists?limit=50");
-  if (!data || !data.items) return [];
+  try {
+    const data = await api("/me/playlists?limit=50");
+    if (!data || !data.items) return [];
 
-  return data.items.filter(Boolean).map((pl) => ({
-    id: pl.id,
-    name: pl.name,
-    uri: pl.uri,
-    image: pl.images?.[0]?.url,
-    total: pl.tracks?.total ?? 0,
-  }));
+    return data.items.filter(Boolean).map((pl) => ({
+      id: pl.id,
+      name: pl.name,
+      uri: pl.uri,
+      image: pl.images?.[0]?.url,
+      total: pl.tracks?.total ?? 0 
+    }));
+  } catch (err) {
+    console.warn("Błąd podczas pobierania listy playlist:", err);
+    return [];
+  }
 }
 
 export async function getPlaylistTracks(playlistId) {
   let tracks = [];
   let url = `/playlists/${playlistId}/tracks?limit=100`;
-
+  
   while (url) {
-    const data = await api(url);
-    if (!data || !data.items) break;
+    try {
+      const data = await api(url);
+      if (!data || !data.items) break;
 
-    const mapped = data.items.filter(el => el.track).map(({ track }) => ({
-      id: track.id,
-      name: track.name,
-      uri: track.uri,
-      artist: track.artists.map((a) => a.name).join(", "),
-      duration: msToMinSec(track.duration_ms),
-      image: track.album.images[1]?.url || track.album.images[0]?.url,
-    }));
-    tracks = [...tracks, ...mapped];
-    url = data.next ? data.next : null;
+      const mapped = data.items.filter(el => el.track).map(({ track }) => ({
+        id: track.id,
+        name: track.name,
+        uri: track.uri,
+        artist: track.artists.map((a) => a.name).join(", "),
+        duration: msToMinSec(track.duration_ms),
+        image: track.album?.images?.[1]?.url || track.album?.images?.[0]?.url,
+      }));
+      tracks = [...tracks, ...mapped];
+      url = data.next ? data.next : null;
+    } catch (err) {
+      // Łagodna obsługa błędu 403! Apka już się tu nie wywali.
+      console.warn(`Zablokowany dostęp (403) do utworów playlisty ${playlistId}. Użytkownik nie ma uprawnień.`);
+      break; 
+    }
   }
   return tracks;
 }
 
+// --- Tworzenie i Modyfikacja Playlist ---
 export async function createPlaylist(name, description = "") {
   const userRes = await api("/me");
   if (!userRes || !userRes.id) throw new Error("Brak ID użytkownika");
-
+  
   return await api(`/users/${userRes.id}/playlists`, {
     method: "POST",
     body: JSON.stringify({ name, description, public: false }),
@@ -221,61 +219,35 @@ export async function removeTracksFromPlaylist(playlistId, trackUris) {
   });
 }
 
+// --- Odtwarzacz ---
 export async function playTrackOnSpotify(trackUri, contextUri = null, deviceId = null) {
-  const body = contextUri
-    ? { context_uri: contextUri, offset: { uri: trackUri } }
+  const body = contextUri 
+    ? { context_uri: contextUri, offset: { uri: trackUri } } 
     : { uris: [trackUri] };
-
+    
   const url = deviceId ? `/me/player/play?device_id=${deviceId}` : "/me/player/play";
-
-  await api(url, {
-    method: "PUT",
-    body: JSON.stringify(body),
-  });
+  await api(url, { method: "PUT", body: JSON.stringify(body) });
 }
 
-export async function pauseSpotify() {
-  await api("/me/player/pause", { method: "PUT" });
-}
-
-export async function resumeSpotify() {
-  await api("/me/player/play", { method: "PUT" });
-}
-
-export async function nextSpotify() {
-  await api("/me/player/next", { method: "POST" });
-}
-
-export async function prevSpotify() {
-  await api("/me/player/previous", { method: "POST" });
-}
-
-export async function setVolumeSpotify(percent) {
-  await api(`/me/player/volume?volume_percent=${percent}`, { method: "PUT" });
-}
-
-export async function seekSpotify(positionMs) {
-  await api(`/me/player/seek?position_ms=${positionMs}`, { method: "PUT" });
-}
-
-export async function getPlaybackState() {
-  return await api("/me/player");
-}
-
+export async function pauseSpotify() { await api("/me/player/pause", { method: "PUT" }); }
+export async function resumeSpotify() { await api("/me/player/play", { method: "PUT" }); }
+export async function nextSpotify() { await api("/me/player/next", { method: "POST" }); }
+export async function prevSpotify() { await api("/me/player/previous", { method: "POST" }); }
+export async function setVolumeSpotify(percent) { await api(`/me/player/volume?volume_percent=${percent}`, { method: "PUT" }); }
+export async function seekSpotify(positionMs) { await api(`/me/player/seek?position_ms=${positionMs}`, { method: "PUT" }); }
+export async function getPlaybackState() { return await api("/me/player"); }
 export async function transferPlayback(deviceId) {
-  await api("/me/player", {
-    method: "PUT",
-    body: JSON.stringify({ device_ids: [deviceId], play: false }),
-  });
+  await api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: false }) });
 }
 
-export async function logout() {
-  localStorage.clear();
-  window.location.reload();
+// --- Sesja ---
+export async function logout() { 
+  localStorage.clear(); 
+  window.location.reload(); 
 }
 
-export function isLoggedIn() {
-  return !!localStorage.getItem("spotify_token");
+export function isLoggedIn() { 
+  return !!localStorage.getItem("spotify_token"); 
 }
 
 function msToMinSec(ms) {
