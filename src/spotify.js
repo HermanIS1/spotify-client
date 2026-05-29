@@ -323,17 +323,15 @@ export async function transferPlayback(deviceId) {
   });
 }
 export async function searchSpotify(query, type = "track", limit = 20) {
-  // Upewnij się, że przesyłasz parametry jako obiekt
+  // 1. Zadbaj o to, żeby query nie było puste i było zakodowane
   const params = new URLSearchParams({
     q: query,
     type: type,
     limit: limit.toString(),
   });
 
-  // Użyj metody .toString() – to automatycznie zakoduje parametry (np. spacje na %20)
-  return await api(`/search?${params.toString()}`);
-}
-  // 3. Upewnij się, że używamy api(), która sama dodaje nagłówek Authorization
+  // 2. Wywołaj api, upewniając się, że endpoint nie ma dodatkowych slashy na początku
+  // Pamiętaj, żeby przekazać "search?" zamiast "/search?" jeśli api() dokleja slash
   return await api(`/search?${params.toString()}`);
 }
 
