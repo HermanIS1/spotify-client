@@ -74,40 +74,80 @@ export async function exchangeCodeForToken(code) {
   return data;
 }
 
+async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem("spotify_refresh_token");
+  if (!refreshToken) return false;
+
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: CLIENT_ID,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok || !data.access_token) return false;
+
+  localStorage.setItem("spotify_token", data.access_token);
+  localStorage.setItem(
+    "spotify_token_expiry",
+    String(Date.now() + data.expires_in * 1000),
+  );
+  if (data.refresh_token) {
+    localStorage.setItem("spotify_refresh_token", data.refresh_token);
+  }
+  return true;
+}
+
+async function ensureValidToken() {
+  const expiry = Number(localStorage.getItem("spotify_token_expiry") || 0);
+  if (Date.now() < expiry - 60_000) return;
+  const refreshed = await refreshAccessToken();
+  if (!refreshed) throw new Error("Session expired — log in again");
+}
+
 // --- Główna funkcja API ---
 async function api(endpoint, options = {}) {
+  await ensureValidToken();
+
   const token = localStorage.getItem("spotify_token");
   if (!token) throw new Error("No token available");
 
-  // Jeśli endpoint ma w sobie już 'http', użyj go, w przeciwnym razie doklej BASE_URL
   const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
-  
-  const res = await fetch(fullUrl, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
+  const headers = { Authorization: `Bearer ${token}`, ...options.headers };
+  if (options.body) headers["Content-Type"] = "application/json";
+
+  const res = await fetch(fullUrl, { ...options, headers });
 
   if (res.status === 204 || res.status === 202) return null;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
+  if (!res.ok) {
+    const detail = data.error?.message || data.error_description || "";
+    throw new Error(
+      `Spotify API error: ${res.status}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
   return data;
 }
 
+function playlistEntryTrack(entry) {
+  return entry?.track ?? entry?.item ?? null;
+}
+
 // --- Funkcje użytkowe ---
-export async function searchSpotify(query, type = "track", limit = 20) {
-  if (!query || typeof query !== 'string' || query.trim() === "") {
+export async function searchSpotify(query, type = "track", limit = 10) {
+  if (!query || typeof query !== "string" || query.trim() === "") {
     return { tracks: { items: [] } };
   }
-  
+
   const params = new URLSearchParams({
     q: query.trim(),
-    type: type,
-    limit: "20",
-    market: "PL" // Wymuszamy polski rynek, to naprawia 99% błędów 400 w Search API
+    type,
+    limit: String(Math.min(Math.max(limit, 1), 10)),
+    market: "PL",
   });
 
   return await api(`/search?${params.toString()}`);
@@ -147,49 +187,51 @@ export async function getPlaylists() {
     uri: pl.uri,
     image: pl.images?.[0]?.url,
     // Zabezpieczenie przed wywaleniem (TypeError: Cannot read properties of undefined)
-    total: pl.tracks?.total ?? 0 
+    total: pl.tracks?.total ?? pl.items?.total ?? 0,
   }));
 }
 
 export async function getPlaylistTracks(playlistId) {
   let tracks = [];
-  let url = `/playlists/${playlistId}/tracks?limit=100`;
-  
+  let url = `/playlists/${playlistId}/items?limit=50`;
+
   while (url) {
     const data = await api(url);
-    if (!data || !data.items) break;
+    if (!data?.items) break;
 
-    const mapped = data.items.filter(el => el.track).map(({ track }) => ({
-      id: track.id,
-      name: track.name,
-      uri: track.uri,
-      artist: track.artists.map((a) => a.name).join(", "),
-      duration: msToMinSec(track.duration_ms),
-      image: track.album.images[1]?.url || track.album.images[0]?.url,
-    }));
+    const mapped = data.items
+      .map((entry) => {
+        const track = playlistEntryTrack(entry);
+        if (!track?.id) return null;
+        return {
+          id: track.id,
+          name: track.name,
+          uri: track.uri,
+          artist: track.artists.map((a) => a.name).join(", "),
+          duration: msToMinSec(track.duration_ms),
+          image: track.album.images[1]?.url || track.album.images[0]?.url,
+        };
+      })
+      .filter(Boolean);
+
     tracks = [...tracks, ...mapped];
-    url = data.next ? data.next : null;
+    url = data.next || null;
   }
   return tracks;
 }
 
 // --- Obsługa Playlist (Tworzenie i Modyfikacja) ---
 
-export async function createPlaylist(name, description = "") {
-  // Najpierw pobieramy ID użytkownika
-  const userRes = await api("/me");
-  if (!userRes || !userRes.id) throw new Error("Brak ID użytkownika");
-  
-  return await api(`/users/${userRes.id}/playlists`, {
+export async function createPlaylist(name, description = "", isPublic = false) {
+  return await api("/me/playlists", {
     method: "POST",
-    body: JSON.stringify({ name, description, public: false }),
+    body: JSON.stringify({ name, description, public: isPublic }),
   });
 }
 
 export async function addTracksToPlaylist(playlistId, trackUris) {
-  // Spotify API akceptuje maksymalnie 100 utworów na jedno zapytanie
   for (let i = 0; i < trackUris.length; i += 100) {
-    await api(`/playlists/${playlistId}/tracks`, {
+    await api(`/playlists/${playlistId}/items`, {
       method: "POST",
       body: JSON.stringify({ uris: trackUris.slice(i, i + 100) }),
     });
@@ -197,9 +239,9 @@ export async function addTracksToPlaylist(playlistId, trackUris) {
 }
 
 export async function removeTracksFromPlaylist(playlistId, trackUris) {
-  await api(`/playlists/${playlistId}/tracks`, {
+  await api(`/playlists/${playlistId}/items`, {
     method: "DELETE",
-    body: JSON.stringify({ tracks: trackUris.map(uri => ({ uri })) }),
+    body: JSON.stringify({ items: trackUris.map((uri) => ({ uri })) }),
   });
 }
 
