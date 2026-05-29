@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createPlaylist, addTracksToPlaylist } from "../spotify";
+import { createPlaylist } from "../spotify";
 
 export default function CreatePlaylist({ onPlaylistCreated }) {
   const [showForm, setShowForm] = useState(false);
@@ -28,71 +28,48 @@ export default function CreatePlaylist({ onPlaylistCreated }) {
   }
 
   return (
-    <div style={{ padding: "12px", borderTop: "var(--border2)" }}>
+    <div
+      className="panel"
+      style={{ padding: 14, borderTop: "var(--border2)", flexShrink: 0 }}
+    >
       {!showForm ? (
         <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ width: "100%" }}
           onClick={() => setShowForm(true)}
-          style={{
-            width: "100%",
-            padding: "8px",
-            background: "none",
-            border: "var(--border2)",
-            color: "var(--g)",
-            fontFamily: "var(--font-mono)",
-            fontSize: "12px",
-            cursor: "pointer",
-            transition: "background 0.1s",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--bg3)")
-          }
-          onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
         >
-          + Create Playlist
+          <i className="ti ti-plus" style={{ marginRight: 6 }} />
+          NOWA PLAYLISTA
         </button>
       ) : (
         <form
           onSubmit={handleCreate}
-          style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+          style={{ display: "flex", flexDirection: "column", gap: 10 }}
         >
           <input
             type="text"
+            className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Playlist name..."
-            style={{
-              padding: "6px",
-              background: "var(--bg2)",
-              border: "var(--border2)",
-              borderRadius: "2px",
-              color: "var(--g)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "12px",
-            }}
+            placeholder="Nazwa playlisty..."
+            autoFocus
           />
           <textarea
+            className="input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Description (optional)"
-            style={{
-              padding: "6px",
-              background: "var(--bg2)",
-              border: "var(--border2)",
-              borderRadius: "2px",
-              color: "var(--g)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "12px",
-              resize: "vertical",
-              minHeight: "40px",
-            }}
+            placeholder="Opis (opcjonalnie)"
+            rows={2}
+            style={{ resize: "vertical", minHeight: 48 }}
           />
           <label
             style={{
-              fontSize: "11px",
+              fontSize: 11,
               color: "var(--g2)",
               display: "flex",
               alignItems: "center",
-              gap: "6px",
+              gap: 8,
             }}
           >
             <input
@@ -100,41 +77,24 @@ export default function CreatePlaylist({ onPlaylistCreated }) {
               checked={isPublic}
               onChange={(e) => setIsPublic(e.target.checked)}
             />
-            Public playlist
+            Publiczna playlista
           </label>
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div style={{ display: "flex", gap: 8 }}>
             <button
               type="submit"
+              className="btn btn-primary"
               disabled={loading}
-              style={{
-                flex: 1,
-                padding: "6px",
-                background: "var(--g4)",
-                border: "none",
-                color: "var(--bg)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "12px",
-                cursor: "pointer",
-                opacity: loading ? 0.5 : 1,
-              }}
+              style={{ flex: 1, opacity: loading ? 0.6 : 1 }}
             >
-              {loading ? "Creating..." : "Create"}
+              {loading ? "..." : "UTWÓRZ"}
             </button>
             <button
               type="button"
+              className="btn btn-ghost"
+              style={{ flex: 1 }}
               onClick={() => setShowForm(false)}
-              style={{
-                flex: 1,
-                padding: "6px",
-                background: "none",
-                border: "var(--border2)",
-                color: "var(--g)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "12px",
-                cursor: "pointer",
-              }}
             >
-              Cancel
+              ANULUJ
             </button>
           </div>
         </form>

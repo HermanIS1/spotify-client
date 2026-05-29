@@ -1,40 +1,61 @@
-// Topbar.jsx
 export default function Topbar({ onLogout }) {
   return (
-    <div style={{
-      background: 'var(--bg2)',
-      borderBottom: 'var(--border2)',
-      padding: '0 16px',
-      height: '36px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      fontSize: '11px',
-      color: 'var(--g3)',
-      flexShrink: 0,
-    }}>
-      <span style={{ color: 'var(--g)', fontSize: '12px' }}>SPOTIFY_CLIENT.EXE</span>
-      <span>
-        v0.1.0 &nbsp;|&nbsp;
-        <span style={{ color: 'var(--g)' }}>● CONNECTED</span>
-      </span>
-      <button
-        onClick={onLogout}
+    <header
+      className="panel"
+      style={{
+        height: 42,
+        padding: "0 20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        borderBottom: "var(--border2)",
+        flexShrink: 0,
+        background: "var(--bg-glass)",
+        backdropFilter: "blur(12px)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span className="title-display glow-text" style={{ fontSize: 13 }}>
+          SPOTIFY_CLIENT
+        </span>
+        <span
+          style={{
+            fontSize: 9,
+            color: "var(--g4)",
+            letterSpacing: "0.2em",
+            padding: "2px 8px",
+            border: "var(--border)",
+          }}
+        >
+          v0.2.0
+        </span>
+      </div>
+
+      <div
         style={{
-          background: 'none',
-          border: 'none',
-          color: 'var(--g3)',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '11px',
-          cursor: 'pointer',
-          padding: '2px 8px',
-          transition: 'color 0.1s',
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 10,
+          letterSpacing: "0.12em",
         }}
-        onMouseEnter={e => e.currentTarget.style.color = 'var(--g)'}
-        onMouseLeave={e => e.currentTarget.style.color = 'var(--g3)'}
       >
-        &gt;_ logout
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: "var(--g-glow)",
+            boxShadow: "0 0 8px var(--g-glow)",
+            animation: "pulse-glow 2s infinite",
+          }}
+        />
+        <span style={{ color: "var(--g2)" }}>ONLINE</span>
+      </div>
+
+      <button type="button" className="btn btn-ghost" onClick={onLogout} style={{ padding: "6px 12px" }}>
+        WYLOGUJ
       </button>
-    </div>
+    </header>
   );
 }

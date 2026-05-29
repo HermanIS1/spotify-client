@@ -1,17 +1,25 @@
-@import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=UnifrakturMaguntia&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Share+Tech+Mono&family=UnifrakturMaguntia&display=swap");
 
 :root {
   --g: #4dbb6e;
   --g2: #3a9957;
   --g3: #2a6e3f;
   --g4: #173d24;
+  --g-glow: #00ff41;
   --bg: #060e08;
   --bg2: #0b1610;
   --bg3: #101e14;
-  --border: 1px solid #4dbb6e22;
-  --border2: 1px solid #4dbb6e44;
+  --bg-glass: rgba(11, 22, 16, 0.72);
+  --border: 1px solid rgba(77, 187, 110, 0.14);
+  --border2: 1px solid rgba(77, 187, 110, 0.35);
+  --border-glow: 1px solid rgba(0, 255, 65, 0.45);
+  --shadow-glow: 0 0 24px rgba(0, 255, 65, 0.12);
+  --shadow-glow-strong: 0 0 32px rgba(0, 255, 65, 0.22);
   --font-mono: "Share Tech Mono", monospace;
+  --font-display: "Orbitron", sans-serif;
   --font-gothic: "UnifrakturMaguntia", cursive;
+  --radius: 2px;
+  --radius-lg: 6px;
 }
 
 * {
@@ -34,20 +42,391 @@ body {
   font-family: var(--font-mono);
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg2);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--g4);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--g3);
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(77, 187, 110, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(77, 187, 110, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
 }
 
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(77, 187, 110, 0.08), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Layout ── */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.app-sidebar-col {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  flex-shrink: 0;
+  border-right: var(--border2);
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ── Panels ── */
+.panel {
+  background: var(--bg-glass);
+  border: var(--border);
+  backdrop-filter: blur(8px);
+}
+
+.panel-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+.panel-header {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--g3);
+  text-transform: uppercase;
+  padding: 10px 16px 6px;
+}
+
+.panel-header::before {
+  content: "// ";
+  color: var(--g4);
+}
+
+/* ── Typography ── */
+.title-gothic {
+  font-family: var(--font-gothic);
+  color: var(--g);
+}
+
+.title-display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--g);
+}
+
+.glow-text {
+  color: var(--g-glow);
+  text-shadow:
+    0 0 6px rgba(0, 255, 65, 0.5),
+    0 0 16px rgba(0, 255, 65, 0.25);
+}
+
+/* ── Buttons & inputs ── */
+.btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s,
+    color 0.15s;
+  border-radius: var(--radius);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: var(--border2);
+  color: var(--g);
+  padding: 8px 14px;
+}
+
+.btn-ghost:hover {
+  background: var(--bg3);
+  border-color: var(--g);
+  box-shadow: var(--shadow-glow);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--g4), var(--g3));
+  border: var(--border-glow);
+  color: var(--bg);
+  padding: 8px 14px;
+  font-weight: bold;
+}
+
+.btn-primary:hover {
+  box-shadow: var(--shadow-glow-strong);
+}
+
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: var(--border);
+  color: var(--g3);
+  border-radius: var(--radius);
+}
+
+.btn-icon:hover,
+.btn-icon.active {
+  color: var(--g-glow);
+  border-color: var(--g);
+  box-shadow: 0 0 12px rgba(0, 255, 65, 0.2);
+}
+
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(6, 14, 8, 0.8);
+  border: var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--g);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input:focus {
+  border-color: var(--g);
+  box-shadow: 0 0 0 1px rgba(77, 187, 110, 0.3), var(--shadow-glow);
+}
+
+.input::placeholder {
+  color: var(--g4);
+}
+
+/* ── List items ── */
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+  font-size: 12px;
+  color: var(--g2);
+}
+
+.list-item:hover {
+  background: rgba(16, 30, 20, 0.9);
+}
+
+.list-item.active {
+  color: var(--g);
+  background: var(--bg3);
+  border-left-color: var(--g-glow);
+  box-shadow: inset 4px 0 12px rgba(0, 255, 65, 0.08);
+}
+
+/* ── Track row ── */
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s;
+}
+
+.track-row:hover {
+  background: rgba(16, 30, 20, 0.65);
+}
+
+.track-row.active {
+  background: var(--bg3);
+  border-left-color: var(--g-glow);
+}
+
+.track-art {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  border: var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg3);
+}
+
+.track-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Modal ── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 4, 0.82);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal {
+  width: min(400px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border: var(--border-glow);
+  box-shadow: var(--shadow-glow-strong);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  animation: slideUp 0.25s ease;
+}
+
+.modal-header {
+  padding: 16px 18px 12px;
+  border-bottom: var(--border);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.modal-footer {
+  padding: 12px 18px;
+  border-top: var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.playlist-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-mono);
+  color: var(--g2);
+  transition: background 0.12s, color 0.12s;
+}
+
+.playlist-pick:hover {
+  background: var(--bg3);
+  color: var(--g);
+}
+
+.playlist-pick img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  border: var(--border);
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  border: var(--border-glow);
+  background: var(--bg2);
+  box-shadow: var(--shadow-glow-strong);
+  z-index: 200;
+  animation: slideUp 0.3s ease;
+}
+
+.toast.success {
+  color: var(--g-glow);
+}
+
+.toast.error {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.4);
+}
+
+/* ── Login / loading screens ── */
+.screen-center {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--bg);
+}
+
+.screen-frame {
+  padding: 48px 56px;
+  border: var(--border-glow);
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-glow-strong);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  text-align: center;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(77, 187, 110, 0.35);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--g-glow);
+  box-shadow: 0 0 8px var(--g-glow);
+}
+
+/* ── Animations ── */
 @keyframes blink {
   0%,
   100% {
@@ -58,59 +437,69 @@ body {
   }
 }
 
-.cursor {
-  animation: blink 1s infinite;
-  color: var(--g);
-}
-
-/* Stylizacja całego paska przewijania */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-/* Tło paska, po którym porusza się suwak */
-::-webkit-scrollbar-track {
-  background: #050a06;
-  border-left: 1px solid rgba(0, 255, 65, 0.2);
-}
-
-/* Wygląd samego suwaka */
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 255, 65, 0.3);
-  border-radius: 0px;
-}
-
-/* Zachowanie suwaka po najechaniu myszką */
-::-webkit-scrollbar-thumb:hover {
-  background: #00ff41;
-  box-shadow: 0 0 10px #00ff41;
-}
-
-/* Animacja delikatnego migotania ekranu */
-@keyframes crt-flicker {
-  0% {
-    opacity: 0.98;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
   }
-  50% {
+  to {
     opacity: 1;
   }
-  100% {
-    opacity: 0.99;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* Podkręcony neonowy glow dla ważnych elementów interfejsu */
-.glowing-text {
-  color: #00ff41;
-  text-shadow:
-    0 0 4px rgba(0, 255, 65, 0.6),
-    0 0 10px rgba(0, 255, 65, 0.4),
-    0 0 20px rgba(0, 255, 65, 0.2);
-  animation: crt-flicker 0.15s infinite;
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(0, 255, 65, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 255, 65, 0.35);
+  }
 }
 
-/* Możesz też nałożyć ten efekt na całe tło aplikacji */
-body {
-  animation: crt-flicker 0.2s infinite;
+.cursor {
+  animation: blink 1s infinite;
+  color: var(--g-glow);
+}
+
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--g4);
+  border-radius: 2px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--g3), var(--g-glow));
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(0, 255, 65, 0.4);
+  transition: width 0.4s linear;
+}
+
+.search-result-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.track-row:hover .search-result-actions,
+.search-result-row:hover .search-result-actions {
+  opacity: 1;
 }
