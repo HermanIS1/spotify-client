@@ -46,32 +46,9 @@ export async function redirectToLogin() {
     redirect_uri: REDIRECT_URI,
     code_challenge_method: "S256",
     code_challenge: challenge,
-    show_dialog: "true",
   });
 
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
-}
-
-export async function exchangeCodeForToken(code) {
-  const verifier = localStorage.getItem("spotify_verifier");
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: REDIRECT_URI,
-      client_id: CLIENT_ID,
-      code_verifier: verifier,
-    }),
-  });
-  const data = await res.json();
-  if (data.access_token) {
-    localStorage.setItem("spotify_token", data.access_token);
-    localStorage.setItem("spotify_refresh_token", data.refresh_token);
-    localStorage.setItem("spotify_token_expiry", Date.now() + data.expires_in * 1000);
-  }
-  return data;
 }
 
 export async function exchangeCodeForToken(code) {
@@ -81,7 +58,6 @@ export async function exchangeCodeForToken(code) {
     const res = await fetch("https://accounts.spotify.com/api/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      // KRYTYCZNE: .toString() rozwiązuje problem błędu formatowania 400
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code: code,
@@ -93,7 +69,6 @@ export async function exchangeCodeForToken(code) {
 
     const data = await res.json();
     
-    // Jeśli jest błąd 400, Spotify powie nam dokładnie dlaczego
     if (!res.ok) {
       console.error("🚨 BŁĄD 400 (Token API - Exchange):", data);
       return null;
@@ -161,7 +136,7 @@ async function api(endpoint, options = {}) {
 
   if (!token) throw new Error("No token available");
 
-  // Sprawdzamy, czy token wygasł (z marginesem 1 minuty zapasu)
+  // Odświeżanie tokena z wyprzedzeniem minuty
   if (expiry && Date.now() > parseInt(expiry) - 60000) {
     console.log("🔄 Token wygasł, odświeżam w tle...");
     token = await refreshAccessToken();
@@ -174,7 +149,7 @@ async function api(endpoint, options = {}) {
     Authorization: `Bearer ${token}`
   };
 
-  // Zabezpieczenie przed błędem 400 - Content-Type tylko tam, gdzie to konieczne
+  // Content-Type dodawany WYŁĄCZNIE dla metod modyfikujących
   if (options.method && ["POST", "PUT", "DELETE"].includes(options.method)) {
     headers["Content-Type"] = "application/json";
   }
@@ -186,7 +161,6 @@ async function api(endpoint, options = {}) {
 
   if (res.status === 204 || res.status === 202) return null;
   
-  // Jeśli z jakiegoś powodu wciąż dostajemy 401, wylogowujemy
   if (res.status === 401) {
     console.warn("Krytyczne wygaśnięcie sesji (401). Wymuszone wylogowanie.");
     logout();
@@ -204,22 +178,16 @@ async function api(endpoint, options = {}) {
   return data;
 }
 
-// --- Wyszukiwarka ---
+// --- Wyszukiwarka z ucięciem do 100 znaków ---
 export async function searchSpotify(query, type = "track", limit = 20) {
   if (!query || typeof query !== 'string' || query.trim() === "") {
     return { tracks: { items: [] } };
   }
 
-  // 1. Ucinamy zapytanie do rygorystycznego limitu 100 znaków (przed kodowaniem URL)
   const truncatedQuery = query.trim().substring(0, 100);
-  
-  // 2. Bezpieczne kodowanie znaków (spacje na %20 itp.)
   const safeQuery = encodeURIComponent(truncatedQuery);
-  
-  // 3. Wymuszamy poprawny limit jako liczbę (zabezpieczenie przed "Invalid limit")
   const safeLimit = parseInt(limit, 10) || 20;
 
-  // Składamy czysty URL, który Spotify musi przetrawić
   return await api(`/search?q=${safeQuery}&type=${type}&limit=${safeLimit}&market=PL`);
 }
 
