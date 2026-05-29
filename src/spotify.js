@@ -323,16 +323,15 @@ export async function transferPlayback(deviceId) {
   });
 }
 export async function searchSpotify(query, type = "track", limit = 20) {
-  // 1. Ogranicz długość zapytania do 100 znaków (zgodnie z limitem API)
-  const safeQuery = query.substring(0, 100);
-
   const params = new URLSearchParams({
-    q: safeQuery,
+    q: query.substring(0, 100),
     type: type,
     limit: limit.toString(),
   });
 
-  return await api(`/search?${params.toString()}`);
+  return await api(`/search?${params.toString()}`, {
+    method: "GET" // Dodaj to jawnie
+  });
 }
 
 export async function addTracksToPlaylist(playlistId, trackUris) {
