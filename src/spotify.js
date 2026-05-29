@@ -167,9 +167,18 @@ export async function searchSpotify(query, type = "track", limit = 20) {
   if (!query || typeof query !== 'string' || query.trim() === "") {
     return { tracks: { items: [] } };
   }
+
+  // 1. Ucinamy zapytanie do rygorystycznego limitu 100 znaków (przed kodowaniem URL)
+  const truncatedQuery = query.trim().substring(0, 100);
   
-  const safeQuery = encodeURIComponent(query.trim());
-  return await api(`/search?q=${safeQuery}&type=${type}&limit=${limit}&market=PL`);
+  // 2. Bezpieczne kodowanie znaków (spacje na %20 itp.)
+  const safeQuery = encodeURIComponent(truncatedQuery);
+  
+  // 3. Wymuszamy poprawny limit jako liczbę (zabezpieczenie przed "Invalid limit")
+  const safeLimit = parseInt(limit, 10) || 20;
+
+  // Składamy czysty URL, który Spotify musi przetrawić
+  return await api(`/search?q=${safeQuery}&type=${type}&limit=${safeLimit}&market=PL`);
 }
 
 // --- Biblioteka i Playlisty ---
