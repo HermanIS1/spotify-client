@@ -160,7 +160,7 @@ export default function App() {
       window.history.replaceState({}, "", "/");
       setLoading(true);
       setLoadingMsg("wymiana tokenu...");
-      exchangeCodeForToken(code).then(() => {
+      excgeCodeForToken(code).then(() => {
         setLoggedIn(true);
         setLoading(false);
       });
@@ -238,7 +238,7 @@ export default function App() {
   }
 
   // ── Zmiana widoku (sidebar) ─────────────────────────────────────────────────
-  async function handleSelectView(id) {
+  async function dleSelectView(id) {
     setCurrentView(id);
 
     if (id === "liked") {
@@ -268,7 +268,7 @@ export default function App() {
     setCurrentPlaylistUri(pl?.uri || null);
   }
 
-async function handlePlayTrack(track, idx) {
+async function dlePlayTrack(track, idx) {
     setCurrentTrack(track);
     setCurrentIdx(idx);
     setIsPlaying(true);
@@ -294,7 +294,7 @@ async function handlePlayTrack(track, idx) {
           const next = prev + 1;
           if (next >= totalSecRef.current) {
             if (isRepeat) return 0;
-            handleNext();
+            dleNext();
             return 0;
           }
           setProgress(next / totalSecRef.current);
@@ -330,9 +330,9 @@ async function handlePlayTrack(track, idx) {
   }, [loggedIn]);
 
   // ── Kontrolki ──────────────────────────────────────────────────────────────
-  async function handleTogglePlay() {
+  async function dleTogglePlay() {
     if (!currentTrack) {
-      if (currentTracks.length > 0) handlePlayTrack(currentTracks[0], 0);
+      if (currentTracks.length > 0) dlePlayTrack(currentTracks[0], 0);
       return;
     }
     const newState = !isPlaying;
@@ -345,19 +345,19 @@ async function handlePlayTrack(track, idx) {
     }
   }
 
-  const handleNext = useCallback(async () => {
+  const dleNext = useCallback(async () => {
     if (!currentTracks.length) return;
     let nextIdx;
     if (isShuffle) nextIdx = Math.floor(Math.random() * currentTracks.length);
     else nextIdx = (currentIdx + 1) % currentTracks.length;
-    handlePlayTrack(currentTracks[nextIdx], nextIdx);
+    dlePlayTrack(currentTracks[nextIdx], nextIdx);
     try {
       await nextSpotify();
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, currentTracks, isShuffle]);
 
-  async function handlePrev() {
+  async function dlePrev() {
     if (!currentTracks.length) return;
     if (currentSec > 3) {
       setCurrentSec(0);
@@ -369,13 +369,13 @@ async function handlePlayTrack(track, idx) {
     }
     const prevIdx =
       (currentIdx - 1 + currentTracks.length) % currentTracks.length;
-    handlePlayTrack(currentTracks[prevIdx], prevIdx);
+    dlePlayTrack(currentTracks[prevIdx], prevIdx);
     try {
       await prevSpotify();
     } catch {}
   }
 
-  async function handleSeek(ratio) {
+  async function dleSeek(ratio) {
     const sec = Math.floor(ratio * totalSecRef.current);
     setCurrentSec(sec);
     setProgress(ratio);
@@ -384,10 +384,18 @@ async function handlePlayTrack(track, idx) {
     } catch {}
   }
 
-  async function handleVolume(val) {
-    try {
-      await setVolumeSpotify(val);
-    } catch {}
+async function handleVolume(val) {
+    // 1. Zatrzymujemy poprzednie (zbyt szybkie) wywołanie
+    if (volumeTimeoutRef.current) clearTimeout(volumeTimeoutRef.current);
+
+    // 2. Ustawiamy nowe wywołanie z opóźnieniem 300 milisekund
+    volumeTimeoutRef.current = setTimeout(async () => {
+      try {
+        await setVolumeSpotify(val);
+      } catch (err) {
+        console.warn("Błąd głośności:", err);
+      }
+    }, 300); // Zmieni głośność w API dopiero jak puścisz suwak/przestaniesz nim trząść
   }
 
   function handleLogout() {
