@@ -153,29 +153,32 @@ export default function App() {
   const volumeTimeoutRef = useRef(null);
 
   // ── OAuth callback ────────────────────────────────────────────────────────
+  // ── OAuth callback ────────────────────────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
 
     if (code) {
+      // Czyścimy URL z kodu, żeby nie został w pasku przeglądarki
       window.history.replaceState({}, "", "/");
       setLoading(true);
       setLoadingMsg("wymiana tokenu...");
-      exchangeCodeForToken(code).then(() => {
-        setLoggedIn(true);
-      
-      exchangeCodeForToken(code).then((data) => {
-        // Twarde zabezpieczenie: ustawiamy "loggedIn" tylko jeśli mamy token!
-        if (data && data.access_token) {
-          setLoggedIn(true);
-        } else {
-          console.error("🚨 Błąd logowania: Spotify nie zwróciło tokenu!");
-        }
-        setLoading(false);
-      }).catch(err => {
-        console.error("🚨 Krytyczny błąd autoryzacji:", err);
-        setLoading(false);
-      });
+
+      // Wywołujemy funkcję tylko raz, poprawnie obsługując obietnicę (promise)
+      exchangeCodeForToken(code)
+        .then((data) => {
+          if (data && data.access_token) {
+            setLoggedIn(true);
+          } else {
+            console.error("🚨 Błąd logowania: Spotify nie zwróciło tokenu!");
+          }
+        })
+        .catch((err) => {
+          console.error("🚨 Krytyczny błąd autoryzacji:", err);
+        })
+        .finally(() => {
+          setLoading(false); // Zawsze wyłączamy ładowanie, niezależnie od wyniku
+        });
     }
   }, []);
 
