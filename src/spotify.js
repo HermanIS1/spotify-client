@@ -75,13 +75,43 @@ export async function exchangeCodeForToken(code) {
 }
 
 // --- Główna funkcja API ---
+async function refreshToken() {
+  const refresh = localStorage.getItem("spotify_refresh_token");
+  if (!refresh) { window.location.reload(); return null; }
+
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refresh,
+      client_id: CLIENT_ID,
+    }),
+  });
+
+  const data = await res.json();
+  if (data.access_token) {
+    localStorage.setItem("spotify_token", data.access_token);
+    localStorage.setItem("spotify_token_expiry", Date.now() + data.expires_in * 1000);
+    return data.access_token;
+  }
+
+  window.location.reload();
+  return null;
+}
+
 async function api(endpoint, options = {}) {
-  const token = localStorage.getItem("spotify_token");
+  let token = localStorage.getItem("spotify_token");
+  const expiry = localStorage.getItem("spotify_token_expiry");
+
+  if (expiry && Date.now() > parseInt(expiry) - 60_000) {
+    token = await refreshToken();
+  }
+
   if (!token) throw new Error("No token available");
 
-  // Jeśli endpoint ma w sobie już 'http', użyj go, w przeciwnym razie doklej BASE_URL
   const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
-  
+
   const res = await fetch(fullUrl, {
     ...options,
     headers: {
