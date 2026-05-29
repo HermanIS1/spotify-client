@@ -1,0 +1,116 @@
+@import url("https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=UnifrakturMaguntia&display=swap");
+
+:root {
+  --g: #4dbb6e;
+  --g2: #3a9957;
+  --g3: #2a6e3f;
+  --g4: #173d24;
+  --bg: #060e08;
+  --bg2: #0b1610;
+  --bg3: #101e14;
+  --border: 1px solid #4dbb6e22;
+  --border2: 1px solid #4dbb6e44;
+  --font-mono: "Share Tech Mono", monospace;
+  --font-gothic: "UnifrakturMaguntia", cursive;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--g);
+  font-family: var(--font-mono);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg2);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--g4);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--g3);
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.cursor {
+  animation: blink 1s infinite;
+  color: var(--g);
+}
+
+/* Stylizacja całego paska przewijania */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+/* Tło paska, po którym porusza się suwak */
+::-webkit-scrollbar-track {
+  background: #050a06;
+  border-left: 1px solid rgba(0, 255, 65, 0.2);
+}
+
+/* Wygląd samego suwaka */
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 65, 0.3);
+  border-radius: 0px;
+}
+
+/* Zachowanie suwaka po najechaniu myszką */
+::-webkit-scrollbar-thumb:hover {
+  background: #00ff41;
+  box-shadow: 0 0 10px #00ff41;
+}
+
+/* Animacja delikatnego migotania ekranu */
+@keyframes crt-flicker {
+  0% {
+    opacity: 0.98;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.99;
+  }
+}
+
+/* Podkręcony neonowy glow dla ważnych elementów interfejsu */
+.glowing-text {
+  color: #00ff41;
+  text-shadow:
+    0 0 4px rgba(0, 255, 65, 0.6),
+    0 0 10px rgba(0, 255, 65, 0.4),
+    0 0 20px rgba(0, 255, 65, 0.2);
+  animation: crt-flicker 0.15s infinite;
+}
+
+/* Możesz też nałożyć ten efekt na całe tło aplikacji */
+body {
+  animation: crt-flicker 0.2s infinite;
+}

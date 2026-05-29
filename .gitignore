@@ -1,0 +1,12 @@
+# Zależności
+node_modules/
+dist/
+release/
+
+# Pliki środowiskowe (tu będziesz trzymać swoje klucze API!)
+.env
+.env.local
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
