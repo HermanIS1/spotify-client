@@ -37,6 +37,8 @@ export async function searchSpotify(query, type = "track", limit = 20) {
   if (!query || query.trim() === "") return { tracks: { items: [] } };
   const safeQuery = encodeURIComponent(query.trim().substring(0, 100));
   const safeLimit = parseInt(limit, 10) || 20;
+  
+  // Usunięto &market=PL - to jest najczęstsza przyczyna 400 u użytkowników zagranicznych
   return await api(`/search?q=${safeQuery}&type=${type}&limit=${safeLimit}`);
 }
 
@@ -96,3 +98,6 @@ function msToMinSec(ms) {
   const s = (totalSec % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 }
+
+
+export { createPlaylist, addTracksToPlaylist, removeTracksFromPlaylist };
