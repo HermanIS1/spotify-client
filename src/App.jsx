@@ -161,7 +161,9 @@ export default function App() {
       window.history.replaceState({}, "", "/");
       setLoading(true);
       setLoadingMsg("wymiana tokenu...");
-
+      exchangeCodeForToken(code).then(() => {
+        setLoggedIn(true);
+      
       exchangeCodeForToken(code).then((data) => {
         // Twarde zabezpieczenie: ustawiamy "loggedIn" tylko jeśli mamy token!
         if (data && data.access_token) {
@@ -176,6 +178,7 @@ export default function App() {
       });
     }
   }, []);
+
   // ── Inicjalizacja Web Playback SDK (Własny odtwarzacz) ──────────────────────
   useEffect(() => {
     if (!loggedIn) return;
@@ -232,7 +235,6 @@ export default function App() {
   }, [loggedIn]);
 
   async function loadLibrary() {
-async function loadLibrary() {
     setLoading(true);
 
     setLoadingMsg("pobieranie polubionych...");
@@ -245,21 +247,6 @@ async function loadLibrary() {
     setPlaylists(pls);
 
     setLoading(false);
-    try {
-      setLoadingMsg("pobieranie polubionych...");
-      const liked = await getLikedTracks();
-      setLikedTracks(liked);
-      setCurrentTracks(liked);
-
-      setLoadingMsg("pobieranie playlist...");
-      const pls = await getPlaylists();
-      setPlaylists(pls);
-    } catch (err) {
-      console.error("🚨 Błąd podczas pobierania biblioteki (np. brak Premium):", err);
-    } finally {
-      // To gwarantuje, że ekran ładowania ZAWSZE zniknie, niezależnie od błędów
-      setLoading(false); 
-    }
   }
 
   // ── Zmiana widoku (sidebar) ─────────────────────────────────────────────────
