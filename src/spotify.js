@@ -44,34 +44,25 @@ export async function exchangeCodeForToken(code) {
 async function api(endpoint, options = {}) {
   const token = localStorage.getItem("spotify_token");
   if (!token) throw new Error("No token available");
-
   const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
-  
   const res = await fetch(fullUrl, {
     ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...options.headers },
   });
-
-  if (res.status === 204) return null;
+  if (res.status === 204 || res.status === 202) return null;
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`Spotify API error: ${res.status}`);
   return data;
 }
 
-// --- Funkcje użytkowe ---
+// --- Funkcje API (Wszystkie przywrócone) ---
 export async function searchSpotify(query, type = "track", limit = 20) {
   if (!query || query.trim().length === 0) return { tracks: { items: [] } };
-  
   const params = new URLSearchParams({
     q: query.substring(0, 100),
     type: type,
     limit: Math.min(Math.max(limit, 1), 50).toString(),
   });
-
   return await api(`/search?${params.toString()}`);
 }
 
@@ -95,7 +86,7 @@ export async function getLikedTracks() {
 export async function getPlaylists() {
   const data = await api("/me/playlists?limit=50");
   return data.items.filter(Boolean).map((pl) => ({
-    id: pl.id, name: pl.name, uri: pl.uri, image: pl.images?.[0]?.url,
+    id: pl.id, name: pl.name, uri: pl.uri, image: pl.images?.[0]?.url, total: pl.tracks.total
   }));
 }
 
@@ -116,6 +107,22 @@ export async function getPlaylistTracks(playlistId) {
   return tracks;
 }
 
+export async function createPlaylist(name, description = "") {
+  return await api("/me/playlists", {
+    method: "POST",
+    body: JSON.stringify({ name, description, public: false }),
+  });
+}
+
+export async function addTracksToPlaylist(playlistId, trackUris) {
+  for (let i = 0; i < trackUris.length; i += 100) {
+    await api(`/playlists/${playlistId}/tracks`, {
+      method: "POST",
+      body: JSON.stringify({ uris: trackUris.slice(i, i + 100) }),
+    });
+  }
+}
+
 export async function playTrackOnSpotify(trackUri, contextUri = null) {
   const body = contextUri ? { context_uri: contextUri, offset: { uri: trackUri } } : { uris: [trackUri] };
   await api("/me/player/play", { method: "PUT", body: JSON.stringify(body) });
@@ -125,17 +132,18 @@ export async function pauseSpotify() { await api("/me/player/pause", { method: "
 export async function resumeSpotify() { await api("/me/player/play", { method: "PUT" }); }
 export async function nextSpotify() { await api("/me/player/next", { method: "POST" }); }
 export async function prevSpotify() { await api("/me/player/previous", { method: "POST" }); }
+export async function setVolumeSpotify(percent) { await api(`/me/player/volume?volume_percent=${percent}`, { method: "PUT" }); }
+export async function seekSpotify(positionMs) { await api(`/me/player/seek?position_ms=${positionMs}`, { method: "PUT" }); }
 export async function getPlaybackState() { return await api("/me/player"); }
-export async function logout() { localStorage.clear(); }
+export async function logout() { localStorage.clear(); window.location.reload(); }
 export function isLoggedIn() { return !!localStorage.getItem("spotify_token"); }
+export async function transferPlayback(deviceId) {
+  await api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: false }) });
+}
 
 function msToMinSec(ms) {
   const totalSec = Math.floor(ms / 1000);
   const m = Math.floor(totalSec / 60);
   const s = (totalSec % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
-}
-
-export async function transferPlayback(deviceId) {
-  await api("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: false }) });
 }
