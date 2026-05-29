@@ -1,5 +1,5 @@
 const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae";
-const REDIRECT_URI = window.location.origin + "/callback";
+const REDIRECT_URI = window.location.origin;
 const BASE_URL = "https://api.spotify.com/v1";
 
 const SCOPES = [
