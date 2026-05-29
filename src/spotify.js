@@ -323,15 +323,15 @@ export async function transferPlayback(deviceId) {
   });
 }
 export async function searchSpotify(query, type = "track", limit = 20) {
-  // 1. Zablokuj wysyłanie pustych zapytań
-  if (!query || query.trim() === "") return { tracks: { items: [] } };
-
-  // 2. Poprawne kodowanie parametrów
+  // Zamiast ręcznego łączenia stringów, użyj URLSearchParams
   const params = new URLSearchParams({
     q: query,
     type: type,
-    limit: limit,
+    limit: limit.toString(),
   });
+
+  return await api(`/search?${params.toString()}`);
+}
 
   // 3. Upewnij się, że używamy api(), która sama dodaje nagłówek Authorization
   return await api(`/search?${params.toString()}`);
