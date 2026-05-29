@@ -4,8 +4,8 @@ const SCOPES = [
   "user-library-read",
   "playlist-read-private",
   "playlist-read-collaborative",
-  "playlist-modify-public", // ← Keep these
-  "playlist-modify-private", // ← Keep these
+  "playlist-modify-public",
+  "playlist-modify-private",
   "streaming",
   "user-read-email",
   "user-read-private",
@@ -13,7 +13,7 @@ const SCOPES = [
   "user-modify-playback-state",
 ].join(" ");
 
-// ─── PKCE Auth Flow ───────────────────────────────────────────────────────────
+// ─── PKCE Auth Flow ────────────────────────────────────────────────────────
 // Bezpieczniejszy niż Implicit Flow, nie wymaga backendu
 
 function generateRandomString(length) {
@@ -46,7 +46,7 @@ export async function redirectToLogin() {
     redirect_uri: REDIRECT_URI,
     code_challenge_method: "S256",
     code_challenge: challenge,
-    show_dialog: "true", // Wymusza pokazanie ekranu zgód
+    show_dialog: "true",
   });
 
   window.location.href = `https://accounts.spotify.com/authorize?${params}`;
@@ -97,7 +97,6 @@ async function refreshToken() {
   });
 
   if (!res.ok) {
-    // token nieważny — wyloguj i zacznij od nowa
     logout();
     window.location.href = "/";
     return null;
@@ -136,7 +135,7 @@ export function logout() {
   localStorage.removeItem("spotify_verifier");
 }
 
-// ─── API helper ───────────────────────────────────────────────────────────────
+// ─── API helper ─────────────────────────────────────────────────────────
 
 async function api(endpoint, options = {}) {
   const token = await getToken();
@@ -144,7 +143,7 @@ async function api(endpoint, options = {}) {
   const res = await fetch(
     endpoint.startsWith("http")
       ? endpoint
-      : `https://api.spotify.com/v1${endpoint}`, // zostawiam Twój bazowy URL
+      : `https://api.spotify.com/v1${endpoint}`,
     {
       ...options,
       headers: {
@@ -155,13 +154,10 @@ async function api(endpoint, options = {}) {
     },
   );
 
-  // Jeśli API zwraca 204 (No Content) lub 202 (Accepted), nie ma czego parsować
   if (res.status === 204 || res.status === 202) return null;
 
-  // Pobieramy odpowiedź jako czysty tekst zamiast wymuszać JSON
   const text = await res.text();
 
-  // Jeśli tekst jest pusty, zwracamy null, w przeciwnym razie parsujemy JSON
   let data = null;
   if (text) {
     try {
@@ -183,9 +179,8 @@ async function api(endpoint, options = {}) {
   return data;
 }
 
-// ─── Dane ─────────────────────────────────────────────────────────────────────
+// ─── Dane ───────────────────────────────────────────────────────────
 
-// Polubione utwory (stronicowane, pobieramy wszystkie)
 export async function getLikedTracks() {
   let tracks = [];
   let url = "/me/tracks?limit=50";
@@ -202,7 +197,6 @@ export async function getLikedTracks() {
     }));
     tracks = [...tracks, ...mapped];
 
-    // Spotify zwraca pełny URL następnej strony lub null
     url = data.next
       ? data.next.replace("https://api.spotify.com/v1", "")
       : null;
@@ -211,7 +205,6 @@ export async function getLikedTracks() {
   return tracks;
 }
 
-// Lista playlist użytkownika
 export async function getPlaylists() {
   const data = await api("/me/playlists?limit=50");
   return data.items
@@ -226,7 +219,6 @@ export async function getPlaylists() {
     }));
 }
 
-// Tracki konkretnej playlisty (NOWY ENDPOINT /items)
 export async function getPlaylistTracks(playlistId) {
   let tracks = [];
   let url = `/playlists/${playlistId}/items?limit=100`;
@@ -234,9 +226,8 @@ export async function getPlaylistTracks(playlistId) {
   while (url) {
     const data = await api(url);
     const mapped = data.items
-      .filter((el) => el.item && el.item.id) // ZMIANA: szukamy 'item' zamiast 'track'
+      .filter((el) => el.item && el.item.id)
       .map(({ item }) => ({
-        // ZMIANA: wyciągamy 'item' zamiast 'track'
         id: item.id,
         name: item.name,
         artist: item.artists.map((a) => a.name).join(", "),
@@ -254,10 +245,8 @@ export async function getPlaylistTracks(playlistId) {
 }
 
 // ─── Odtwarzanie (Spotify Connect) ───────────────────────────────────────────
-// Wymaga Spotify Premium + aktywne urządzenie
 
 export async function playTrackOnSpotify(trackUri, contextUri = null) {
-  // contextUri = uri playlisty (żeby Spotify wiedział skąd lecimy)
   const body = contextUri
     ? { context_uri: contextUri, offset: { uri: trackUri } }
     : { uris: [trackUri] };
@@ -292,12 +281,11 @@ export async function seekSpotify(positionMs) {
   await api(`/me/player/seek?position_ms=${positionMs}`, { method: "PUT" });
 }
 
-// Stan odtwarzacza (do synchronizacji UI z prawdziwym stanem)
 export async function getPlaybackState() {
   return await api("/me/player");
 }
 
-//Utils
+// Utils
 
 function msToMinSec(ms) {
   const totalSec = Math.floor(ms / 1000);
@@ -306,26 +294,21 @@ function msToMinSec(ms) {
   return `${m}:${s}`;
 }
 
-// Przekazanie odtwarzania do Web Playback SDK
 export async function transferPlayback(deviceId) {
   await api("/me/player", {
     method: "PUT",
     body: JSON.stringify({
       device_ids: [deviceId],
-      play: false, // false zapobiega automatycznemu puszczeniu muzyki przy starcie
+      play: false,
     }),
   });
 }
 
-// Search for tracks, playlists, or artists
+// Search for tracks - FIXED
 export async function searchSpotify(query, type = "track", limit = 20) {
-  const params = new URLSearchParams({
-    q: query,
-    type: type, // "track", "playlist", "artist", or combination: "track,playlist"
-    limit: limit,
-  });
-
-  return await api(`/search?${params}`);
+  const encodedQuery = encodeURIComponent(query);
+  const endpoint = `/search?q=${encodedQuery}&type=${type}&limit=${limit}`;
+  return await api(endpoint);
 }
 
 // Create a new playlist
@@ -345,7 +328,6 @@ export async function createPlaylist(name, description = "", isPublic = false) {
 
 // Add tracks to a playlist
 export async function addTracksToPlaylist(playlistId, trackUris) {
-  // Spotify API accepts max 100 tracks per request
   const chunks = [];
   for (let i = 0; i < trackUris.length; i += 100) {
     chunks.push(trackUris.slice(i, i + 100));
