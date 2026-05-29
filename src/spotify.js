@@ -126,17 +126,16 @@ async function api(endpoint, options = {}) {
 }
 
 export async function searchSpotify(query, type = "track", limit = 20) {
+  // 1. Zabezpieczenie przed pustym zapytaniem
   if (!query || typeof query !== 'string' || query.trim() === "") {
     return { tracks: { items: [] } };
   }
 
-  const params = new URLSearchParams({
-    q: query.trim(),
-    type: type,
-    limit: String(limit),
-  });
-
-  return await api(`/search?${params.toString()}`);
+  // 2. Ręczne, bezpieczne kodowanie (zamienia spacje na %20 itp.)
+  const safeQuery = encodeURIComponent(query.trim());
+  
+  // 3. Twardy URL bez żadnej magii - to musi przejść
+  return await api(`/search?q=${safeQuery}&type=${type}&limit=20&market=PL`);
 }
 
 export async function getLikedTracks() {
