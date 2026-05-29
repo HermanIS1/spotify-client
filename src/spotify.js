@@ -137,7 +137,6 @@ export async function searchSpotify(query, type = "track", limit = 20) {
     q: query.trim(),
     type: type,
     limit: "20",
-    market: "PL" // Wymuszamy polski rynek, to naprawia 99% błędów 400 w Search API
   });
 
   return await api(`/search?${params.toString()}`);
