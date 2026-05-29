@@ -323,16 +323,31 @@ export async function transferPlayback(deviceId) {
   });
 }
 export async function searchSpotify(query, type = "track", limit = 20) {
-  // Zadbaj o to, aby limit był liczbą między 1 a 50
+  // 1. Walidacja: Puste zapytanie
+  if (!query || query.trim().length === 0) {
+    return { tracks: { items: [] } };
+  }
+
+  // 2. Ograniczenie długości do 100 znaków (wymóg API Spotify)
+  const safeQuery = query.substring(0, 100);
+
+  // 3. Ograniczenie limitu do zakresu 1-50 (wymóg API Spotify)
   const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 50);
 
+  // 4. Bezpieczne budowanie URL
   const params = new URLSearchParams({
-    q: query.substring(0, 100), // Pamiętamy o limicie 100 znaków!
+    q: safeQuery,
     type: type,
     limit: safeLimit.toString(),
   });
 
-  return await api(`/search?${params.toString()}`);
+  // 5. Wykonanie zapytania
+  try {
+    return await api(`/search?${params.toString()}`, { method: "GET" });
+  } catch (error) {
+    console.error("Błąd podczas wyszukiwania w Spotify:", error);
+    throw error;
+  }
 }
 
 export async function addTracksToPlaylist(playlistId, trackUris) {
