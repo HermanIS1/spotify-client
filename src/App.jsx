@@ -184,7 +184,7 @@ export default function App() {
       const spotifyPlayer = new window.Spotify.Player({
         name: "HermanOS Client", // Taką nazwę zobaczysz w Spotify
         getOAuthToken: (cb) => {
-          cb(token);
+          cb(localStorage.getItem("spotify_token") || token);
         },
         volume: 0.5,
       });
