@@ -324,22 +324,13 @@ export async function transferPlayback(deviceId) {
 }
 
 export async function searchSpotify(query, type = "track", limit = 20) {
-  const endpoint = `/search?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}&limit=${limit}`;
-  return await api(endpoint);
-}
-
-export async function createPlaylist(name, description = "", isPublic = false) {
-  const data = await api("/me", { method: "GET" });
-  const userId = data.id;
-
-  return await api(`/users/${userId}/playlists`, {
-    method: "POST",
-    body: JSON.stringify({
-      name: name,
-      description: description,
-      public: isPublic,
-    }),
+  const params = new URLSearchParams({
+    q: encodeURIComponent(query), // <--- Tutaj jest kluczowa poprawka!
+    type: type,
+    limit: limit,
   });
+
+  return await api(`/search?${params.toString()}`); // <--- I tutaj użyj .toString()
 }
 
 export async function addTracksToPlaylist(playlistId, trackUris) {
