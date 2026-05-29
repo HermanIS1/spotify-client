@@ -203,12 +203,15 @@ export async function removeTracksFromPlaylist(playlistId, trackUris) {
 
 // --- Obsługa Odtwarzacza ---
 
-export async function playTrackOnSpotify(trackUri, contextUri = null) {
+export async function playTrackOnSpotify(trackUri, contextUri = null, deviceId = null) {
   const body = contextUri 
     ? { context_uri: contextUri, offset: { uri: trackUri } } 
     : { uris: [trackUri] };
     
-  await api("/me/player/play", { 
+  // Doklejamy device_id bezpośrednio do URL, jeśli jest dostępne
+  const url = deviceId ? `/me/player/play?device_id=${deviceId}` : "/me/player/play";
+    
+  await api(url, { 
     method: "PUT", 
     body: JSON.stringify(body) 
   });
