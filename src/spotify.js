@@ -98,14 +98,16 @@ async function api(endpoint, options = {}) {
 }
 
 // --- Funkcje użytkowe ---
-
 export async function searchSpotify(query, type = "track", limit = 20) {
-  if (!query || query.trim().length === 0) return { tracks: { items: [] } };
+  if (!query || typeof query !== 'string' || query.trim() === "") {
+    return { tracks: { items: [] } };
+  }
   
   const params = new URLSearchParams({
-    q: query.substring(0, 100),
+    q: query.trim(),
     type: type,
-    limit: Math.min(Math.max(parseInt(limit) || 20, 1), 50).toString(),
+    limit: "20",
+    market: "PL" // Wymuszamy polski rynek, to naprawia 99% błędów 400 w Search API
   });
 
   return await api(`/search?${params.toString()}`);
