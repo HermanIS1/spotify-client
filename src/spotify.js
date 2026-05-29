@@ -74,7 +74,43 @@ export async function exchangeCodeForToken(code) {
   return data;
 }
 
-// --- Automatyczne odświeżanie tokenu ---
+export async function exchangeCodeForToken(code) {
+  const verifier = localStorage.getItem("spotify_verifier");
+  
+  try {
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      // KRYTYCZNE: .toString() rozwiązuje problem błędu formatowania 400
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code,
+        redirect_uri: REDIRECT_URI,
+        client_id: CLIENT_ID,
+        code_verifier: verifier,
+      }).toString(), 
+    });
+
+    const data = await res.json();
+    
+    // Jeśli jest błąd 400, Spotify powie nam dokładnie dlaczego
+    if (!res.ok) {
+      console.error("🚨 BŁĄD 400 (Token API - Exchange):", data);
+      return null;
+    }
+
+    if (data.access_token) {
+      localStorage.setItem("spotify_token", data.access_token);
+      localStorage.setItem("spotify_refresh_token", data.refresh_token);
+      localStorage.setItem("spotify_token_expiry", Date.now() + data.expires_in * 1000);
+    }
+    return data;
+  } catch (error) {
+    console.error("Wystąpił krytyczny błąd połączenia z API:", error);
+    return null;
+  }
+}
+
 export async function refreshAccessToken() {
   const refreshToken = localStorage.getItem("spotify_refresh_token");
   if (!refreshToken) {
@@ -90,10 +126,16 @@ export async function refreshAccessToken() {
         grant_type: "refresh_token",
         refresh_token: refreshToken,
         client_id: CLIENT_ID,
-      }),
+      }).toString(),
     });
 
     const data = await res.json();
+    if (!res.ok) {
+      console.error("🚨 BŁĄD 400 (Token API - Refresh):", data);
+      logout();
+      return null;
+    }
+
     if (data.access_token) {
       localStorage.setItem("spotify_token", data.access_token);
       if (data.refresh_token) {
