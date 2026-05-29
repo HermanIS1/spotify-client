@@ -1,5 +1,5 @@
 const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae";
-const REDIRECT_URI = window.location.origin; // Czysty adres, zapobiega pętlom przekierowań
+const REDIRECT_URI = window.location.origin;
 const BASE_URL = "https://api.spotify.com/v1";
 
 const SCOPES = [
@@ -74,10 +74,57 @@ export async function exchangeCodeForToken(code) {
   return data;
 }
 
+// --- Automatyczne odświeżanie tokenu ---
+export async function refreshAccessToken() {
+  const refreshToken = localStorage.getItem("spotify_refresh_token");
+  if (!refreshToken) {
+    logout();
+    return null;
+  }
+
+  try {
+    const res = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: CLIENT_ID,
+      }),
+    });
+
+    const data = await res.json();
+    if (data.access_token) {
+      localStorage.setItem("spotify_token", data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem("spotify_refresh_token", data.refresh_token);
+      }
+      localStorage.setItem("spotify_token_expiry", Date.now() + data.expires_in * 1000);
+      return data.access_token;
+    } else {
+      logout();
+      return null;
+    }
+  } catch (err) {
+    console.error("Błąd podczas odświeżania tokenu:", err);
+    logout();
+    return null;
+  }
+}
+
 // --- Główna funkcja API ---
 async function api(endpoint, options = {}) {
-  const token = localStorage.getItem("spotify_token");
+  let token = localStorage.getItem("spotify_token");
+  const expiry = localStorage.getItem("spotify_token_expiry");
+
   if (!token) throw new Error("No token available");
+
+  // Sprawdzamy, czy token wygasł (z marginesem 1 minuty zapasu)
+  if (expiry && Date.now() > parseInt(expiry) - 60000) {
+    console.log("🔄 Token wygasł, odświeżam w tle...");
+    token = await refreshAccessToken();
+    if (!token) throw new Error("Nie udało się odświeżyć tokenu.");
+  }
 
   const fullUrl = endpoint.startsWith("http") ? endpoint : `${BASE_URL}${endpoint}`;
   
@@ -85,8 +132,7 @@ async function api(endpoint, options = {}) {
     Authorization: `Bearer ${token}`
   };
 
-  // KLUCZOWE: Spotify API rzuca błąd 400 na wyszukiwarce, jeśli dodasz Content-Type do zapytań GET.
-  // Dodajemy ten nagłówek TYLKO dla modyfikacji danych (POST, PUT, DELETE).
+  // Zabezpieczenie przed błędem 400 - Content-Type tylko tam, gdzie to konieczne
   if (options.method && ["POST", "PUT", "DELETE"].includes(options.method)) {
     headers["Content-Type"] = "application/json";
   }
@@ -97,6 +143,14 @@ async function api(endpoint, options = {}) {
   });
 
   if (res.status === 204 || res.status === 202) return null;
+  
+  // Jeśli z jakiegoś powodu wciąż dostajemy 401, wylogowujemy
+  if (res.status === 401) {
+    console.warn("Krytyczne wygaśnięcie sesji (401). Wymuszone wylogowanie.");
+    logout();
+    return null;
+  }
+
   const data = await res.json().catch(() => ({}));
   
   if (!res.ok) {
@@ -108,14 +162,14 @@ async function api(endpoint, options = {}) {
   return data;
 }
 
-// --- Wyszukiwarka (Już bez błędu 400) ---
+// --- Wyszukiwarka ---
 export async function searchSpotify(query, type = "track", limit = 20) {
   if (!query || typeof query !== 'string' || query.trim() === "") {
     return { tracks: { items: [] } };
   }
   
   const safeQuery = encodeURIComponent(query.trim());
-  return await api(`/search?q=${safeQuery}&type=${type}&limit=${limit}`);
+  return await api(`/search?q=${safeQuery}&type=${type}&limit=${limit}&market=PL`);
 }
 
 // --- Biblioteka i Playlisty ---
@@ -134,7 +188,7 @@ export async function getLikedTracks() {
         uri: track.uri,
         artist: track.artists.map((a) => a.name).join(", "),
         duration: msToMinSec(track.duration_ms),
-        image: track.album.images[1]?.url || track.album.images[0]?.url,
+        image: track.album?.images?.[1]?.url || track.album?.images?.[0]?.url,
       }));
       tracks = [...tracks, ...mapped];
       url = data.next ? data.next : null;
@@ -184,8 +238,7 @@ export async function getPlaylistTracks(playlistId) {
       tracks = [...tracks, ...mapped];
       url = data.next ? data.next : null;
     } catch (err) {
-      // Łagodna obsługa błędu 403! Apka już się tu nie wywali.
-      console.warn(`Zablokowany dostęp (403) do utworów playlisty ${playlistId}. Użytkownik nie ma uprawnień.`);
+      console.warn(`Zablokowany dostęp (403) do utworów playlisty ${playlistId}.`);
       break; 
     }
   }
