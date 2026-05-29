@@ -7,6 +7,8 @@ import TrackList from "./components/TrackList";
 import Player from "./components/Player";
 import Search from "./components/Search";
 import CreatePlaylist from "./components/CreatePlaylist";
+import AddToPlaylistModal from "./components/AddToPlaylistModal";
+import Toast from "./components/Toast";
 
 import {
   isLoggedIn,
@@ -25,8 +27,6 @@ import {
   getPlaybackState,
   logout,
   transferPlayback,
-  searchSpotify,
-  createPlaylist,
   addTracksToPlaylist,
 } from "./spotify";
 
@@ -36,89 +36,46 @@ function parseDuration(dur) {
   return parseInt(m) * 60 + parseInt(s);
 }
 
-// ─── Ekran logowania ───────────────────────────────────────────────────────
 function LoginScreen() {
   return (
-    <div
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--bg)",
-        gap: "24px",
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "var(--font-gothic)",
-          fontSize: "48px",
-          color: "var(--g)",
-        }}
-      >
-        Spotify
+    <div className="screen-center">
+      <div className="screen-frame">
+        <div className="title-gothic glow-text" style={{ fontSize: 52, marginBottom: 8 }}>
+          Spotify
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "var(--g3)",
+            letterSpacing: "0.25em",
+            marginBottom: 28,
+          }}
+        >
+          NEURAL AUDIO INTERFACE
+        </div>
+        <button type="button" className="btn btn-primary" onClick={redirectToLogin}>
+          POŁĄCZ Z SPOTIFY
+        </button>
       </div>
-      <div
-        style={{ fontSize: "12px", color: "var(--g3)", letterSpacing: "2px" }}
-      >
-        SPOTIFY_CLIENT.EXE v0.1.0
-      </div>
-      <button
-        onClick={redirectToLogin}
-        style={{
-          marginTop: "16px",
-          padding: "10px 32px",
-          background: "none",
-          border: "var(--border2)",
-          borderRadius: "2px",
-          color: "var(--g)",
-          fontFamily: "var(--font-mono)",
-          fontSize: "13px",
-          cursor: "pointer",
-          letterSpacing: "1px",
-          transition: "background 0.1s",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg3)")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-      >
-        &gt;_ ZALOGUJ PRZEZ SPOTIFY
-      </button>
     </div>
   );
 }
 
-// ─── Ekran ładowania ───────────────────────────────────────────────────────
 function LoadingScreen({ message }) {
   return (
-    <div
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--bg)",
-        gap: "12px",
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "var(--font-gothic)",
-          fontSize: "32px",
-          color: "var(--g)",
-        }}
-      >
-        Spotify
-      </div>
-      <div style={{ fontSize: "12px", color: "var(--g3)" }}>
-        {message} <span className="cursor">█</span>
+    <div className="screen-center">
+      <div className="screen-frame">
+        <div className="title-gothic" style={{ fontSize: 36, marginBottom: 16 }}>
+          Spotify
+        </div>
+        <div style={{ fontSize: 12, color: "var(--g3)", letterSpacing: "0.15em" }}>
+          {message} <span className="cursor">█</span>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Główna aplikacja ──────────────────────────────────────────────────────
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [loading, setLoading] = useState(false);
@@ -140,19 +97,25 @@ export default function App() {
   const [currentSec, setCurrentSec] = useState(0);
   const [currentPlaylistUri, setCurrentPlaylistUri] = useState(null);
 
-  // Zmienne stanu dla wbudowanego odtwarzacza
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
 
-  // Zmienne stanu dla search i playlist
-  const [selectedTracks, setSelectedTracks] = useState([]);
+  const [addModalTrack, setAddModalTrack] = useState(null);
+  const [addModalLoading, setAddModalLoading] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const intervalRef = useRef(null);
   const totalSecRef = useRef(0);
   const syncInterval = useRef(null);
   const volumeTimeoutRef = useRef(null);
+  const toastTimeoutRef = useRef(null);
 
-  // ── OAuth callback ────────────────────────────────────────────────────────
+  function showToast(message, type = "success") {
+    setToast({ message, type });
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 3200);
+  }
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
@@ -160,7 +123,7 @@ export default function App() {
     if (code) {
       window.history.replaceState({}, "", "/");
       setLoading(true);
-      setLoadingMsg("wymiana tokenu...");
+      setLoadingMsg("AUTH.SYNC");
       exchangeCodeForToken(code).then(() => {
         setLoggedIn(true);
         setLoading(false);
@@ -168,7 +131,6 @@ export default function App() {
     }
   }, []);
 
-  // ── Inicjalizacja Web Playback SDK (Własny odtwarzacz) ──────────────────────
   useEffect(() => {
     if (!loggedIn) return;
 
@@ -182,7 +144,7 @@ export default function App() {
 
     window.onSpotifyWebPlaybackSDKReady = () => {
       const spotifyPlayer = new window.Spotify.Player({
-        name: "HermanOS Client", // Taką nazwę zobaczysz w Spotify
+        name: "HermanOS Client",
         getOAuthToken: (cb) => {
           cb(localStorage.getItem("spotify_token") || token);
         },
@@ -192,20 +154,10 @@ export default function App() {
       setPlayer(spotifyPlayer);
 
       spotifyPlayer.addListener("ready", ({ device_id }) => {
-        console.log(
-          "Odtwarzacz gotowy! Przejmowanie kontroli... Device ID:",
-          device_id,
-        );
         setDeviceId(device_id);
-
-        // Zmuszamy Spotify do wysyłania muzyki do naszej aplikacji
         transferPlayback(device_id).catch((err) =>
-          console.error("Błąd transferu:", err),
+          console.error("Transfer error:", err),
         );
-      });
-
-      spotifyPlayer.addListener("not_ready", ({ device_id }) => {
-        console.log("Odtwarzacz rozłączony z Device ID:", device_id);
       });
 
       spotifyPlayer.connect();
@@ -216,7 +168,6 @@ export default function App() {
     };
   }, [loggedIn]);
 
-  // ── Ładowanie danych po zalogowaniu ────────────────────────────────────────
   useEffect(() => {
     if (!loggedIn) return;
     loadLibrary();
@@ -225,20 +176,24 @@ export default function App() {
 
   async function loadLibrary() {
     setLoading(true);
-
-    setLoadingMsg("pobieranie polubionych...");
+    setLoadingMsg("SYNC.LIKED");
     const liked = await getLikedTracks();
     setLikedTracks(liked);
     setCurrentTracks(liked);
 
-    setLoadingMsg("pobieranie playlist...");
+    setLoadingMsg("SYNC.PLAYLISTS");
     const pls = await getPlaylists();
     setPlaylists(pls);
-
     setLoading(false);
   }
 
-  // ── Zmiana widoku (sidebar) ─────────────────────────────────────────────────
+  async function refreshPlaylistTracks(playlistId) {
+    const tracks = await getPlaylistTracks(playlistId);
+    setTrackCache((prev) => ({ ...prev, [playlistId]: tracks }));
+    if (currentView === playlistId) setCurrentTracks(tracks);
+    return tracks;
+  }
+
   async function handleSelectView(id) {
     setCurrentView(id);
 
@@ -252,14 +207,13 @@ export default function App() {
       setCurrentTracks(trackCache[id]);
     } else {
       setLoading(true);
-      setLoadingMsg("ładowanie tracków...");
+      setLoadingMsg("LOAD.TRACKS");
       try {
-        const tracks = await getPlaylistTracks(id);
-        setTrackCache((prev) => ({ ...prev, [id]: tracks }));
-        setCurrentTracks(tracks);
+        await refreshPlaylistTracks(id);
       } catch (err) {
-        console.warn("Brak dostępu do playlisty:", err);
+        console.warn("Playlist access:", err);
         setCurrentTracks([]);
+        showToast("Brak dostępu do tej playlisty", "error");
       } finally {
         setLoading(false);
       }
@@ -269,7 +223,6 @@ export default function App() {
     setCurrentPlaylistUri(pl?.uri || null);
   }
 
-  // ── Odtwarzanie tracka ──────────────────────────────────────────────────────
   async function handlePlayTrack(track, idx) {
     setCurrentTrack(track);
     setCurrentIdx(idx);
@@ -279,14 +232,48 @@ export default function App() {
     totalSecRef.current = parseDuration(track.duration);
 
     try {
-      // PRZEKAZUJEMY DEVICE_ID ABY MUZYKA LECIAŁA OD RAZU!
       await playTrackOnSpotify(track.uri, currentPlaylistUri, deviceId);
     } catch (err) {
-      console.warn("Spotify playback error:", err);
+      console.warn("Playback error:", err);
     }
   }
 
-  // ── Lokalny progres ────────────────────────────────────────────────────────
+  async function handlePlayFromSearch(track) {
+    setCurrentPlaylistUri(null);
+    setCurrentTracks([track]);
+    setCurrentTrack(track);
+    setCurrentIdx(0);
+    setIsPlaying(true);
+    setCurrentSec(0);
+    setProgress(0);
+    totalSecRef.current = parseDuration(track.duration);
+
+    try {
+      await playTrackOnSpotify(track.uri, null, deviceId);
+    } catch (err) {
+      console.warn("Playback error:", err);
+      showToast("Nie udało się odtworzyć utworu", "error");
+    }
+  }
+
+  async function handleAddTrackToPlaylist(playlistId) {
+    if (!addModalTrack) return;
+
+    setAddModalLoading(true);
+    try {
+      await addTracksToPlaylist(playlistId, [addModalTrack.uri]);
+      const pl = playlists.find((p) => p.id === playlistId);
+      await refreshPlaylistTracks(playlistId);
+      showToast(`Dodano do „${pl?.name || "playlisty"}"`);
+      setAddModalTrack(null);
+    } catch (err) {
+      console.error("Add to playlist:", err);
+      showToast(err.message || "Nie udało się dodać utworu", "error");
+    } finally {
+      setAddModalLoading(false);
+    }
+  }
+
   useEffect(() => {
     clearInterval(intervalRef.current);
 
@@ -309,7 +296,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, currentTrack, isRepeat]);
 
-  // ── Synchronizacja z prawdziwym stanem Spotify (co 5s) ─────────────────────
   useEffect(() => {
     if (!loggedIn) return;
 
@@ -324,14 +310,13 @@ export default function App() {
           setProgress(sec / totalSecRef.current);
         }
       } catch {
-        // cicho ignorujemy błędy synca
+        /* sync optional */
       }
     }, 5000);
 
     return () => clearInterval(syncInterval.current);
   }, [loggedIn]);
 
-  // ── Kontrolki ──────────────────────────────────────────────────────────────
   async function handleTogglePlay() {
     if (!currentTrack) {
       if (currentTracks.length > 0) handlePlayTrack(currentTracks[0], 0);
@@ -343,7 +328,7 @@ export default function App() {
       if (newState) await resumeSpotify();
       else await pauseSpotify();
     } catch (err) {
-      console.warn("Spotify toggle error:", err);
+      console.warn("Toggle error:", err);
     }
   }
 
@@ -355,7 +340,9 @@ export default function App() {
     handlePlayTrack(currentTracks[nextIdx], nextIdx);
     try {
       await nextSpotify();
-    } catch {}
+    } catch {
+      /* optional */
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, currentTracks, isShuffle]);
 
@@ -366,7 +353,9 @@ export default function App() {
       setProgress(0);
       try {
         await seekSpotify(0);
-      } catch {}
+      } catch {
+        /* optional */
+      }
       return;
     }
     const prevIdx =
@@ -374,7 +363,9 @@ export default function App() {
     handlePlayTrack(currentTracks[prevIdx], prevIdx);
     try {
       await prevSpotify();
-    } catch {}
+    } catch {
+      /* optional */
+    }
   }
 
   async function handleSeek(ratio) {
@@ -383,24 +374,24 @@ export default function App() {
     setProgress(ratio);
     try {
       await seekSpotify(sec * 1000);
-    } catch {}
+    } catch {
+      /* optional */
+    }
   }
 
   async function handleVolume(val) {
-    // USUWA SPAM - ZABEZPIECZENIE PRZED BŁĘDEM 429
     if (volumeTimeoutRef.current) clearTimeout(volumeTimeoutRef.current);
-
     volumeTimeoutRef.current = setTimeout(async () => {
       try {
         await setVolumeSpotify(val);
       } catch (err) {
-        console.warn("Błąd głośności:", err);
+        console.warn("Volume error:", err);
       }
     }, 300);
   }
 
   function handleLogout() {
-    if (player) player.disconnect(); // Odłączamy odtwarzacz przy wylogowaniu
+    if (player) player.disconnect();
     logout();
     setLoggedIn(false);
     setPlaylists([]);
@@ -408,26 +399,16 @@ export default function App() {
     setCurrentTrack(null);
   }
 
-  // ── Obsługa search i playlist ──────────────────────────────────────────────
-  async function handleSelectTrack(track) {
-    setSelectedTracks([...selectedTracks, track]);
-  }
-
   async function handlePlaylistCreated(playlist) {
-    if (selectedTracks.length > 0) {
-      try {
-        const uris = selectedTracks.map((t) => t.uri);
-        await addTracksToPlaylist(playlist.id, uris);
-        setSelectedTracks([]);
-      } catch (err) {
-        console.error("Error adding tracks:", err);
-      }
-    }
     const pls = await getPlaylists();
     setPlaylists(pls);
+    showToast(`Utworzono „${playlist.name}"`);
+    if (playlist?.id) {
+      setTrackCache((prev) => ({ ...prev, [playlist.id]: [] }));
+      handleSelectView(playlist.id);
+    }
   }
 
-  // ── Aktualnie wyświetlana playlista ─────────────────────────────────────────
   const activePlaylist =
     currentView === "liked"
       ? { id: "liked", name: "Polubione utwory", tracks: likedTracks }
@@ -438,32 +419,19 @@ export default function App() {
           }
         : null;
 
-  // ── Renderowanie ────────────────────────────────────────────────────────────
   if (!loggedIn) return <LoginScreen />;
   if (loading) return <LoadingScreen message={loadingMsg} />;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100vh",
-        background: "var(--bg)",
-        overflow: "hidden",
-      }}
-    >
+    <div className="app-shell">
       <Topbar onLogout={handleLogout} />
 
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            height: "100%",
-            overflow: "hidden",
-          }}
-        >
-          <Search onSelectTrack={handleSelectTrack} />
+      <div className="app-body">
+        <div className="app-sidebar-col">
+          <Search
+            onPlayTrack={handlePlayFromSearch}
+            onAddToPlaylist={setAddModalTrack}
+          />
           <Sidebar
             playlists={playlists}
             currentView={currentView}
@@ -471,11 +439,13 @@ export default function App() {
           />
           <CreatePlaylist onPlaylistCreated={handlePlaylistCreated} />
         </div>
+
         <TrackList
           playlist={activePlaylist}
           currentTrackId={currentTrack?.id}
           isPlaying={isPlaying}
           onPlay={handlePlayTrack}
+          onAddToPlaylist={setAddModalTrack}
         />
       </div>
 
@@ -494,6 +464,16 @@ export default function App() {
         onSeek={handleSeek}
         onVolume={handleVolume}
       />
+
+      <AddToPlaylistModal
+        track={addModalTrack}
+        playlists={playlists}
+        loading={addModalLoading}
+        onSelect={handleAddTrackToPlaylist}
+        onClose={() => !addModalLoading && setAddModalTrack(null)}
+      />
+
+      <Toast message={toast?.message} type={toast?.type} />
     </div>
   );
 }
