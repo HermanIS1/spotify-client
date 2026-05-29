@@ -1,5 +1,5 @@
 const CLIENT_ID = "34699eb977fd4df6af54908a7b010eae"; // ← Twój Client ID
-const REDIRECT_URI = "http://127.0.0.1:5173/callback";
+const REDIRECT_URI = window.location.origin + "/callback";
 const SCOPES = [
   "user-library-read", // polubione utwory
   "playlist-read-private", // prywatne playlisty
