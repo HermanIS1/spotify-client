@@ -7,7 +7,7 @@ import TrackList from "./components/TrackList";
 import Player from "./components/Player";
 import Search from "./components/Search";
 import CreatePlaylist from "./components/CreatePlaylist";
-const volumeTimeoutRef = useRef(null);
+
 import {
   isLoggedIn,
   redirectToLogin,
@@ -150,7 +150,7 @@ export default function App() {
   const intervalRef = useRef(null);
   const totalSecRef = useRef(0);
   const syncInterval = useRef(null);
-
+  const volumeTimeoutRef = useRef(null);
   // ── OAuth callback ────────────────────────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
