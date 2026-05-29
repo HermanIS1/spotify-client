@@ -151,6 +151,7 @@ export default function App() {
   const totalSecRef = useRef(0);
   const syncInterval = useRef(null);
   const volumeTimeoutRef = useRef(null);
+
   // ── OAuth callback ────────────────────────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -160,7 +161,7 @@ export default function App() {
       window.history.replaceState({}, "", "/");
       setLoading(true);
       setLoadingMsg("wymiana tokenu...");
-      excgeCodeForToken(code).then(() => {
+      exchangeCodeForToken(code).then(() => {
         setLoggedIn(true);
         setLoading(false);
       });
@@ -238,7 +239,7 @@ export default function App() {
   }
 
   // ── Zmiana widoku (sidebar) ─────────────────────────────────────────────────
-  async function dleSelectView(id) {
+  async function handleSelectView(id) {
     setCurrentView(id);
 
     if (id === "liked") {
@@ -268,7 +269,8 @@ export default function App() {
     setCurrentPlaylistUri(pl?.uri || null);
   }
 
-async function dlePlayTrack(track, idx) {
+  // ── Odtwarzanie tracka ──────────────────────────────────────────────────────
+  async function handlePlayTrack(track, idx) {
     setCurrentTrack(track);
     setCurrentIdx(idx);
     setIsPlaying(true);
@@ -277,7 +279,7 @@ async function dlePlayTrack(track, idx) {
     totalSecRef.current = parseDuration(track.duration);
 
     try {
-      // TUTAJ DODAJESZ deviceId NA KOŃCU
+      // PRZEKAZUJEMY DEVICE_ID ABY MUZYKA LECIAŁA OD RAZU!
       await playTrackOnSpotify(track.uri, currentPlaylistUri, deviceId);
     } catch (err) {
       console.warn("Spotify playback error:", err);
@@ -294,7 +296,7 @@ async function dlePlayTrack(track, idx) {
           const next = prev + 1;
           if (next >= totalSecRef.current) {
             if (isRepeat) return 0;
-            dleNext();
+            handleNext();
             return 0;
           }
           setProgress(next / totalSecRef.current);
@@ -330,9 +332,9 @@ async function dlePlayTrack(track, idx) {
   }, [loggedIn]);
 
   // ── Kontrolki ──────────────────────────────────────────────────────────────
-  async function dleTogglePlay() {
+  async function handleTogglePlay() {
     if (!currentTrack) {
-      if (currentTracks.length > 0) dlePlayTrack(currentTracks[0], 0);
+      if (currentTracks.length > 0) handlePlayTrack(currentTracks[0], 0);
       return;
     }
     const newState = !isPlaying;
@@ -345,19 +347,19 @@ async function dlePlayTrack(track, idx) {
     }
   }
 
-  const dleNext = useCallback(async () => {
+  const handleNext = useCallback(async () => {
     if (!currentTracks.length) return;
     let nextIdx;
     if (isShuffle) nextIdx = Math.floor(Math.random() * currentTracks.length);
     else nextIdx = (currentIdx + 1) % currentTracks.length;
-    dlePlayTrack(currentTracks[nextIdx], nextIdx);
+    handlePlayTrack(currentTracks[nextIdx], nextIdx);
     try {
       await nextSpotify();
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, currentTracks, isShuffle]);
 
-  async function dlePrev() {
+  async function handlePrev() {
     if (!currentTracks.length) return;
     if (currentSec > 3) {
       setCurrentSec(0);
@@ -369,13 +371,13 @@ async function dlePlayTrack(track, idx) {
     }
     const prevIdx =
       (currentIdx - 1 + currentTracks.length) % currentTracks.length;
-    dlePlayTrack(currentTracks[prevIdx], prevIdx);
+    handlePlayTrack(currentTracks[prevIdx], prevIdx);
     try {
       await prevSpotify();
     } catch {}
   }
 
-  async function dleSeek(ratio) {
+  async function handleSeek(ratio) {
     const sec = Math.floor(ratio * totalSecRef.current);
     setCurrentSec(sec);
     setProgress(ratio);
@@ -384,18 +386,17 @@ async function dlePlayTrack(track, idx) {
     } catch {}
   }
 
-async function handleVolume(val) {
-    // 1. Zatrzymujemy poprzednie (zbyt szybkie) wywołanie
+  async function handleVolume(val) {
+    // USUWA SPAM - ZABEZPIECZENIE PRZED BŁĘDEM 429
     if (volumeTimeoutRef.current) clearTimeout(volumeTimeoutRef.current);
 
-    // 2. Ustawiamy nowe wywołanie z opóźnieniem 300 milisekund
     volumeTimeoutRef.current = setTimeout(async () => {
       try {
         await setVolumeSpotify(val);
       } catch (err) {
         console.warn("Błąd głośności:", err);
       }
-    }, 300); // Zmieni głośność w API dopiero jak puścisz suwak/przestaniesz nim trząść
+    }, 300);
   }
 
   function handleLogout() {
@@ -413,7 +414,6 @@ async function handleVolume(val) {
   }
 
   async function handlePlaylistCreated(playlist) {
-    // Add selected tracks to the new playlist
     if (selectedTracks.length > 0) {
       try {
         const uris = selectedTracks.map((t) => t.uri);
@@ -423,8 +423,6 @@ async function handleVolume(val) {
         console.error("Error adding tracks:", err);
       }
     }
-
-    // Reload playlists
     const pls = await getPlaylists();
     setPlaylists(pls);
   }
@@ -465,7 +463,6 @@ async function handleVolume(val) {
             overflow: "hidden",
           }}
         >
-          {/* PRZYWRÓCONE PRZEKAZYWANIE FUNKCJI! */}
           <Search onSelectTrack={handleSelectTrack} />
           <Sidebar
             playlists={playlists}
@@ -482,7 +479,6 @@ async function handleVolume(val) {
         />
       </div>
 
-      {/* PRZYWRÓCONE WSZYSTKIE FUNKCJE ODTWARZACZA! */}
       <Player
         track={currentTrack}
         isPlaying={isPlaying}
