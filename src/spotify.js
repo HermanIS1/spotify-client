@@ -1,6 +1,9 @@
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-const REDIRECT_URI = window.location.origin + "/callback";
 const BASE_URL = "https://api.spotify.com/v1";
+
+export function getRedirectUri() {
+  return `${window.location.origin}/callback`;
+}
 
 const SCOPES = [
   "user-library-read",
@@ -42,7 +45,7 @@ export async function redirectToLogin() {
     response_type: "code",
     client_id: CLIENT_ID,
     scope: SCOPES,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: getRedirectUri(),
     code_challenge_method: "S256",
     code_challenge: challenge,
     show_dialog: "true",
@@ -59,7 +62,7 @@ export async function exchangeCodeForToken(code) {
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: getRedirectUri(),
       client_id: CLIENT_ID,
       code_verifier: verifier,
     }),
@@ -72,8 +75,38 @@ export async function exchangeCodeForToken(code) {
       "spotify_token_expiry",
       Date.now() + data.expires_in * 1000,
     );
+    return { ok: true, data };
   }
-  return data;
+
+  const message =
+    data.error === "access_denied"
+      ? "To konto nie ma dostępu do aplikacji. W Spotify Developer Dashboard → User Management dodaj dokładną nazwę użytkownika Spotify (nie e-mail) i upewnij się, że ma konto Premium."
+      : data.error_description ||
+        data.error ||
+        "Nie udało się zalogować — sprawdź Client ID i Redirect URI w panelu Spotify.";
+  return { ok: false, error: message };
+}
+
+/** OAuth redirect query: ?code=… or ?error=… */
+export function parseAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const error = params.get("error");
+  if (error) {
+    const description = params.get("error_description");
+    const message =
+      error === "access_denied"
+        ? "Logowanie anulowane lub konto nie jest na liście użytkowników aplikacji (Development Mode)."
+        : description || error;
+    return { ok: false, error: message };
+  }
+  const code = params.get("code");
+  if (code) return { ok: true, code };
+  return null;
+}
+
+export async function getValidAccessToken() {
+  await ensureValidToken();
+  return localStorage.getItem("spotify_token");
 }
 
 async function refreshAccessToken() {
@@ -302,6 +335,15 @@ export async function removeTracksFromLibrary(uris) {
   });
 }
 
+function playEndpoint(deviceId) {
+  if (!deviceId) {
+    throw new Error(
+      "Odtwarzacz nie jest gotowy — poczekaj, aż pojawi się „Gotowy do odtwarzania”.",
+    );
+  }
+  return `/me/player/play?device_id=${deviceId}`;
+}
+
 export async function playTrackOnSpotify(
   trackUri,
   contextUri = null,
@@ -311,10 +353,10 @@ export async function playTrackOnSpotify(
     ? { context_uri: contextUri, offset: { uri: trackUri } }
     : { uris: [trackUri] };
 
-  const url = deviceId
-    ? `/me/player/play?device_id=${deviceId}`
-    : "/me/player/play";
-  await api(url, { method: "PUT", body: JSON.stringify(body) });
+  await api(playEndpoint(deviceId), {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function playContext(
@@ -325,18 +367,20 @@ export async function playContext(
   const body = offsetUri
     ? { context_uri: contextUri, offset: { uri: offsetUri } }
     : { context_uri: contextUri };
-  const url = deviceId
-    ? `/me/player/play?device_id=${deviceId}`
-    : "/me/player/play";
-  await api(url, { method: "PUT", body: JSON.stringify(body) });
+  await api(playEndpoint(deviceId), {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
-export async function pauseSpotify() {
-  await api("/me/player/pause", { method: "PUT" });
+export async function pauseSpotify(deviceId = null) {
+  const q = deviceId ? `?device_id=${deviceId}` : "";
+  await api(`/me/player/pause${q}`, { method: "PUT" });
 }
 
-export async function resumeSpotify() {
-  await api("/me/player/play", { method: "PUT" });
+export async function resumeSpotify(deviceId = null) {
+  const q = deviceId ? `?device_id=${deviceId}` : "";
+  await api(`/me/player/play${q}`, { method: "PUT" });
 }
 
 export async function nextSpotify() {
@@ -374,8 +418,13 @@ export async function transferPlayback(deviceId) {
   });
 }
 
-export async function logout() {
+export async function logout({ spotifyLogout = false } = {}) {
   localStorage.clear();
+  if (spotifyLogout) {
+    const returnTo = encodeURIComponent(window.location.origin);
+    window.location.href = `https://accounts.spotify.com/logout?continue=${returnTo}`;
+    return;
+  }
   window.location.reload();
 }
 

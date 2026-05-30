@@ -1,4 +1,4 @@
-export default function Topbar({ onLogout }) {
+export default function Topbar({ onLogout, onSwitchAccount }) {
   return (
     <header
       className="panel"
@@ -55,9 +55,22 @@ export default function Topbar({ onLogout }) {
 
       <span className="kbd-hint">SPACE · ← →</span>
 
-      <button type="button" className="btn btn-ghost" onClick={onLogout} style={{ padding: "6px 12px" }}>
-        WYLOGUJ
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        {onSwitchAccount && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={onSwitchAccount}
+            style={{ padding: "6px 12px" }}
+            title="Wyloguj z Spotify i zaloguj innym kontem (wymagane w trybie deweloperskim)"
+          >
+            ZMIEŃ KONTO
+          </button>
+        )}
+        <button type="button" className="btn btn-ghost" onClick={onLogout} style={{ padding: "6px 12px" }}>
+          WYLOGUJ
+        </button>
+      </div>
     </header>
   );
 }

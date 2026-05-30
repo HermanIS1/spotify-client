@@ -1,6 +1,13 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
 
+// Widevine / EME — required for Spotify Web Playback SDK audio in Electron
+app.commandLine.appendSwitch(
+  "enable-features",
+  "WidevineCdm,PlatformHEVCDecoderSupport,EncryptedMedia",
+);
+app.commandLine.appendSwitch("disable-features", "HardwareMediaKeyHandling");
+
 let mainWindow;
 
 function createWindow() {
@@ -10,8 +17,9 @@ function createWindow() {
     backgroundColor: "#050a06",
     autoHideMenuBar: true,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
     },
   });
 

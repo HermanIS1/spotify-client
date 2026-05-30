@@ -14,6 +14,8 @@ import {
   isLoggedIn,
   redirectToLogin,
   exchangeCodeForToken,
+  parseAuthCallback,
+  getValidAccessToken,
   getLikedTracks,
   fetchLikedPage,
   getPlaylists,
@@ -58,6 +60,19 @@ function LoginScreen() {
         <button type="button" className="btn btn-primary" onClick={redirectToLogin}>
           POŁĄCZ Z SPOTIFY
         </button>
+        <p
+          style={{
+            marginTop: 20,
+            fontSize: 10,
+            color: "var(--g4)",
+            maxWidth: 320,
+            lineHeight: 1.6,
+          }}
+        >
+          W trybie deweloperskim Spotify tylko konta z listy User Management mogą się
+          zalogować (nazwa użytkownika Spotify, nie e-mail). Odtwarzanie wymaga konta
+          Premium oraz przeglądarki z Widevine (Chrome / Edge).
+        </p>
       </div>
     </div>
   );
@@ -110,6 +125,10 @@ export default function App() {
 
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
+  const [playerReady, setPlayerReady] = useState(false);
+  const [playerError, setPlayerError] = useState(null);
+  const pendingPlayRef = useRef(null);
+  const playerRef = useRef(null);
 
   const [addModalTracks, setAddModalTracks] = useState(null);
   const [addModalLoading, setAddModalLoading] = useState(false);
@@ -128,46 +147,120 @@ export default function App() {
   }
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    if (code) {
-      window.history.replaceState({}, "", "/");
-      setLoading(true);
-      setLoadingMsg("AUTH.SYNC");
-      exchangeCodeForToken(code).then(() => {
-        setLoggedIn(true);
-        setLoading(false);
-      });
+    const auth = parseAuthCallback();
+    if (!auth) return;
+
+    window.history.replaceState({}, "", "/");
+
+    if (!auth.ok) {
+      showToast(auth.error, "error");
+      return;
     }
+
+    setLoading(true);
+    setLoadingMsg("AUTH.SYNC");
+    exchangeCodeForToken(auth.code).then((result) => {
+      if (result.ok) {
+        setLoggedIn(true);
+      } else {
+        showToast(result.error, "error");
+      }
+      setLoading(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!loggedIn) return;
-    const token = localStorage.getItem("spotify_token");
-    if (!token) return;
+    if (!localStorage.getItem("spotify_token")) return;
+
+    setPlayerReady(false);
+    setPlayerError(null);
+    setDeviceId(null);
+
+    function initSpotifyPlayer() {
+      if (!window.Spotify?.Player) return;
+
+      const spotifyPlayer = new window.Spotify.Player({
+        name: "HermanOS Client",
+        getOAuthToken: async (cb) => {
+          try {
+            const token = await getValidAccessToken();
+            cb(token || "");
+          } catch {
+            cb("");
+          }
+        },
+        volume: Number(localStorage.getItem("spotify_volume") || 50) / 100,
+      });
+
+      spotifyPlayer.addListener("ready", ({ device_id }) => {
+        setDeviceId(device_id);
+        setPlayerReady(true);
+        setPlayerError(null);
+        transferPlayback(device_id)
+          .then(() => {
+            const pending = pendingPlayRef.current;
+            if (pending) {
+              pendingPlayRef.current = null;
+              pending();
+            }
+          })
+          .catch(console.error);
+      });
+
+      spotifyPlayer.addListener("not_ready", () => {
+        setPlayerReady(false);
+      });
+
+      spotifyPlayer.addListener("initialization_error", ({ message }) => {
+        setPlayerReady(false);
+        setPlayerError(
+          message?.includes("keysystem")
+            ? "Przeglądarka nie obsługuje DRM (Widevine). Użyj Chrome lub Edge na https, albo uruchom aplikację w przeglądarce zamiast Electrona."
+            : message || "Błąd inicjalizacji odtwarzacza",
+        );
+      });
+
+      spotifyPlayer.addListener("authentication_error", () => {
+        setPlayerError("Błąd autoryzacji odtwarzacza — wyloguj się i zaloguj ponownie.");
+      });
+
+      spotifyPlayer.addListener("account_error", () => {
+        setPlayerError(
+          "Web Playback wymaga konta Spotify Premium na tym użytkowniku.",
+        );
+      });
+
+      spotifyPlayer.addListener("playback_error", ({ message }) => {
+        console.warn("Playback error:", message);
+      });
+
+      playerRef.current = spotifyPlayer;
+      setPlayer(spotifyPlayer);
+      spotifyPlayer.connect();
+    }
+
+    if (window.Spotify?.Player) {
+      initSpotifyPlayer();
+      return () => {
+        playerRef.current?.disconnect();
+        playerRef.current = null;
+      };
+    }
 
     const script = document.createElement("script");
     script.src = "https://sdk.scdn.co/spotify-player.js";
     script.async = true;
     document.body.appendChild(script);
-
-    window.onSpotifyWebPlaybackSDKReady = () => {
-      const spotifyPlayer = new window.Spotify.Player({
-        name: "HermanOS Client",
-        getOAuthToken: (cb) => cb(localStorage.getItem("spotify_token") || token),
-        volume: Number(localStorage.getItem("spotify_volume") || 50) / 100,
-      });
-      setPlayer(spotifyPlayer);
-      spotifyPlayer.addListener("ready", ({ device_id }) => {
-        setDeviceId(device_id);
-        transferPlayback(device_id).catch(console.error);
-      });
-      spotifyPlayer.connect();
-    };
+    window.onSpotifyWebPlaybackSDKReady = initSpotifyPlayer;
 
     return () => {
       if (script.parentNode) script.parentNode.removeChild(script);
+      playerRef.current?.disconnect();
+      playerRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
   useEffect(() => {
@@ -258,7 +351,7 @@ export default function App() {
     setCurrentPlaylistUri(pl?.uri || null);
   }
 
-  async function handlePlayTrack(track, idx) {
+  async function startPlayback(track, idx, contextUri) {
     setCurrentTrack(track);
     setCurrentIdx(idx);
     setIsPlaying(true);
@@ -266,26 +359,30 @@ export default function App() {
     setProgress(0);
     totalSecRef.current = parseDuration(track.duration);
     try {
-      await playTrackOnSpotify(track.uri, currentPlaylistUri, deviceId);
+      await playTrackOnSpotify(track.uri, contextUri, deviceId);
     } catch (err) {
-      showToast("Nie udało się odtworzyć", "error");
+      setIsPlaying(false);
+      showToast(err.message || "Nie udało się odtworzyć", "error");
     }
   }
 
-  async function handlePlayFromSearch(track) {
+  function handlePlayTrack(track, idx, contextUriOverride) {
+    const contextUri =
+      contextUriOverride !== undefined ? contextUriOverride : currentPlaylistUri;
+    if (!playerReady || !deviceId) {
+      pendingPlayRef.current = () => startPlayback(track, idx, contextUri);
+      setCurrentTrack(track);
+      setCurrentIdx(idx);
+      showToast("Łączenie odtwarzacza Spotify…", "success");
+      return;
+    }
+    startPlayback(track, idx, contextUri);
+  }
+
+  function handlePlayFromSearch(track) {
     setCurrentPlaylistUri(null);
     setCurrentTracks([track]);
-    setCurrentTrack(track);
-    setCurrentIdx(0);
-    setIsPlaying(true);
-    setCurrentSec(0);
-    setProgress(0);
-    totalSecRef.current = parseDuration(track.duration);
-    try {
-      await playTrackOnSpotify(track.uri, null, deviceId);
-    } catch (err) {
-      showToast("Nie udało się odtworzyć utworu", "error");
-    }
+    handlePlayTrack(track, 0, null);
   }
 
   async function handlePlayAll() {
@@ -464,8 +561,8 @@ export default function App() {
     const newState = !isPlaying;
     setIsPlaying(newState);
     try {
-      if (newState) await resumeSpotify();
-      else await pauseSpotify();
+      if (newState) await resumeSpotify(deviceId);
+      else await pauseSpotify(deviceId);
     } catch (err) {
       console.warn("Toggle error:", err);
     }
@@ -549,8 +646,20 @@ export default function App() {
     }
   }
 
-  function handleLogout() {
-    if (player) player.disconnect();
+  function disconnectPlayer() {
+    playerRef.current?.disconnect();
+    playerRef.current = null;
+    setPlayer(null);
+    setDeviceId(null);
+    setPlayerReady(false);
+  }
+
+  function handleLogout({ switchAccount = false } = {}) {
+    disconnectPlayer();
+    if (switchAccount) {
+      logout({ spotifyLogout: true });
+      return;
+    }
     logout();
     setLoggedIn(false);
     setPlaylists([]);
@@ -580,7 +689,39 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Topbar onLogout={handleLogout} />
+      <Topbar
+        onLogout={() => handleLogout()}
+        onSwitchAccount={() => handleLogout({ switchAccount: true })}
+      />
+      {playerError && (
+        <div
+          className="player-status-banner"
+          role="alert"
+          style={{
+            padding: "10px 16px",
+            fontSize: 12,
+            color: "var(--g2)",
+            background: "rgba(180, 40, 40, 0.15)",
+            borderBottom: "1px solid rgba(180, 40, 40, 0.35)",
+            lineHeight: 1.5,
+          }}
+        >
+          {playerError}
+        </div>
+      )}
+      {!playerError && loggedIn && !playerReady && (
+        <div
+          style={{
+            padding: "8px 16px",
+            fontSize: 11,
+            color: "var(--g3)",
+            letterSpacing: "0.1em",
+            borderBottom: "1px solid var(--g5)",
+          }}
+        >
+          Łączenie odtwarzacza Spotify…
+        </div>
+      )}
 
       <div className="app-body">
         <div className="app-sidebar-col">
