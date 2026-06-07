@@ -41,6 +41,13 @@ function formatFollowers(n) {
   return String(n);
 }
 
+/** Spotify has no public play-count API — map popularity score to a view-style tier */
+function formatTrackViews(popularity) {
+  if (popularity == null || popularity <= 0) return "—";
+  const estimated = Math.round(500 * 10 ** (popularity / 25));
+  return formatFollowers(estimated);
+}
+
 function PopularityBar({ value, label }) {
   return (
     <div className="np-stat">
@@ -346,7 +353,10 @@ export default function NowPlaying({
                   <span>Czas trwania</span>
                   <span>{details.duration}</span>
                 </p>
-                <PopularityBar value={details.popularity} label="Popularność utworu" />
+                <p className="np-meta-row">
+                  <span>Wyświetlenia</span>
+                  <span>{formatTrackViews(details.popularity)}</span>
+                </p>
                 <p className="np-meta-row">
                   <span>Wykonawcy</span>
                   <span>{details.artist}</span>
