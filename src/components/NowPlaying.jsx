@@ -1,6 +1,39 @@
 import { useState, useEffect, useRef } from "react";
 import { getTrack, getArtist, getArtistTopTracks } from "../spotify";
-import { fetchLyrics, parseLrc, getActiveLyricIndex } from "../lyrics";
+import { fetchLyrics, parseLrc, getLyricSyncState } from "../lyrics";
+
+function LyricLine({ line, lineIdx, sync, isPast, lineRef, onSeekToTime }) {
+  const isCurrent = lineIdx === sync.lineIdx;
+
+  return (
+    <p
+      ref={isCurrent ? lineRef : null}
+      className={`lyric-line ${isCurrent ? "current" : ""} ${isPast ? "past" : ""}`}
+    >
+      {line.words.map((word, wi) => (
+        <span key={`${lineIdx}-${wi}-${word.text}`}>
+          <button
+            type="button"
+            className={`lyric-word ${isCurrent && wi === sync.wordIdx ? "active" : ""} ${
+              isCurrent && wi < sync.wordIdx ? "sung" : ""
+            }`}
+            onClick={() => onSeekToTime(word.time)}
+            title={`Przejdź do ${formatTime(word.time)}`}
+          >
+            {word.text}
+          </button>
+          {wi < line.words.length - 1 ? " " : ""}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 function formatFollowers(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -24,10 +57,11 @@ function PopularityBar({ value, label }) {
 
 export default function NowPlaying({
   track,
-  currentSec,
+  playbackMs = 0,
   isPlaying,
   onClose,
   onPlayTrack,
+  onSeekToTime,
 }) {
   const [tab, setTab] = useState("lyrics");
   const [details, setDetails] = useState(null);
@@ -39,7 +73,8 @@ export default function NowPlaying({
   const lyricsRef = useRef(null);
   const activeLineRef = useRef(null);
 
-  const activeLyricIdx = getActiveLyricIndex(syncedLines, currentSec);
+  const currentTimeSec = playbackMs / 1000;
+  const sync = getLyricSyncState(syncedLines, currentTimeSec);
 
   useEffect(() => {
     if (!track?.id) return undefined;
@@ -64,7 +99,11 @@ export default function NowPlaying({
         setLyrics(lyricsData);
 
         if (lyricsData?.synced) {
-          setSyncedLines(parseLrc(lyricsData.synced));
+          const durationSec =
+            trackData?.durationMs != null
+              ? trackData.durationMs / 1000
+              : parseDuration(track.duration);
+          setSyncedLines(parseLrc(lyricsData.synced, durationSec));
         }
 
         if (trackData?.artistId) {
@@ -93,7 +132,7 @@ export default function NowPlaying({
   useEffect(() => {
     if (tab !== "lyrics" || !activeLineRef.current || !lyricsRef.current) return;
     activeLineRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [activeLyricIdx, tab]);
+  }, [sync.lineIdx, tab]);
 
   if (!track) return null;
 
@@ -169,13 +208,15 @@ export default function NowPlaying({
           <div className="now-playing-lyrics" ref={lyricsRef}>
             {syncedLines.length > 0 ? (
               syncedLines.map((line, i) => (
-                <p
+                <LyricLine
                   key={`${line.time}-${i}`}
-                  ref={i === activeLyricIdx ? activeLineRef : null}
-                  className={`lyric-line ${i === activeLyricIdx ? "active" : ""} ${i < activeLyricIdx ? "past" : ""}`}
-                >
-                  {line.text}
-                </p>
+                  line={line}
+                  lineIdx={i}
+                  sync={sync}
+                  isPast={i < sync.lineIdx}
+                  lineRef={activeLineRef}
+                  onSeekToTime={onSeekToTime}
+                />
               ))
             ) : lyrics?.plain ? (
               lyrics.plain.split("\n").map((line, i) => (

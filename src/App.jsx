@@ -67,6 +67,7 @@ function applyPlaybackPosition(positionMs, durationMs, setters) {
   const durationSec = Math.max(1, Math.floor(durationMs / 1000));
   const sec = Math.floor(positionMs / 1000);
   setters.setCurrentSec(sec);
+  setters.setPlaybackMs?.(positionMs);
   setters.setProgress(durationMs > 0 ? positionMs / durationMs : 0);
   setters.totalSecRef.current = durationSec;
 }
@@ -155,6 +156,7 @@ export default function App() {
   const [isRepeat, setIsRepeat] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentSec, setCurrentSec] = useState(0);
+  const [playbackMs, setPlaybackMs] = useState(0);
   const [currentPlaylistUri, setCurrentPlaylistUri] = useState(null);
 
   const [player, setPlayer] = useState(null);
@@ -320,6 +322,7 @@ export default function App() {
 
         applyPlaybackPosition(state.position, state.duration, {
           setCurrentSec,
+          setPlaybackMs,
           setProgress,
           totalSecRef,
         });
@@ -505,6 +508,7 @@ export default function App() {
       currentIdxRef.current = idx;
       setIsPlaying(true);
       setCurrentSec(0);
+      setPlaybackMs(0);
       setProgress(0);
       totalSecRef.current = parseDuration(track.duration);
     }
@@ -567,6 +571,7 @@ export default function App() {
     currentIdxRef.current = 0;
     setIsPlaying(true);
     setCurrentSec(0);
+    setPlaybackMs(0);
     setProgress(0);
     totalSecRef.current = parseDuration(track.duration);
 
@@ -756,6 +761,7 @@ export default function App() {
 
         applyPlaybackPosition(state.position, state.duration, {
           setCurrentSec,
+          setPlaybackMs,
           setProgress,
           totalSecRef,
         });
@@ -774,7 +780,7 @@ export default function App() {
       } catch {
         /* player disconnected */
       }
-    }, 500);
+    }, 100);
 
     return () => clearInterval(progressIntervalRef.current);
   }, [playerReady, advanceLocalQueue]);
@@ -830,6 +836,7 @@ export default function App() {
 
     if (currentSec > 3) {
       setCurrentSec(0);
+      setPlaybackMs(0);
       setProgress(0);
       try {
         await seekSpotify(0);
@@ -866,10 +873,18 @@ export default function App() {
 
   async function handleSeek(ratio) {
     const sec = Math.floor(ratio * totalSecRef.current);
-    setCurrentSec(sec);
-    setProgress(ratio);
+    await handleSeekToTime(sec);
+  }
+
+  async function handleSeekToTime(sec) {
+    const maxSec = totalSecRef.current || 0;
+    const clamped = Math.max(0, Math.min(maxSec, sec));
+    const ms = Math.round(clamped * 1000);
+    setCurrentSec(Math.floor(clamped));
+    setPlaybackMs(ms);
+    setProgress(maxSec > 0 ? clamped / maxSec : 0);
     try {
-      await seekSpotify(sec * 1000);
+      await seekSpotify(ms);
     } catch {
       /* optional */
     }
@@ -1039,10 +1054,11 @@ export default function App() {
           {showNowPlaying && currentTrack && (
             <NowPlaying
               track={currentTrack}
-              currentSec={currentSec}
+              playbackMs={playbackMs}
               isPlaying={isPlaying}
               onClose={toggleNowPlaying}
               onPlayTrack={(t) => handlePlayTrack(t, 0, null)}
+              onSeekToTime={handleSeekToTime}
             />
           )}
         </div>
