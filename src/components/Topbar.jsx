@@ -1,7 +1,16 @@
-export default function Topbar({ onLogout, onSwitchAccount }) {
+export default function Topbar({ userProfile, onLogout, onSwitchAccount }) {
+  const initials = userProfile?.displayName
+    ? userProfile.displayName
+        .split(" ")
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "?";
+
   return (
     <header
-      className="panel"
+      className="panel topbar"
       style={{
         height: 42,
         padding: "0 20px",
@@ -55,7 +64,23 @@ export default function Topbar({ onLogout, onSwitchAccount }) {
 
       <span className="kbd-hint">SPACE · ← →</span>
 
-      <div style={{ display: "flex", gap: 8 }}>
+      <div className="topbar-actions">
+        {userProfile && (
+          <div
+            className="profile-avatar"
+            title={userProfile.displayName}
+            aria-label={`Profil: ${userProfile.displayName}`}
+          >
+            {userProfile.imageUrl ? (
+              <img src={userProfile.imageUrl} alt="" />
+            ) : (
+              <span className="profile-avatar-fallback" aria-hidden="true">
+                {initials}
+              </span>
+            )}
+          </div>
+        )}
+
         {onSwitchAccount && (
           <button
             type="button"

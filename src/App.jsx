@@ -16,6 +16,7 @@ import {
   exchangeCodeForToken,
   parseAuthCallback,
   getValidAccessToken,
+  getCurrentUser,
   getLikedTracks,
   fetchLikedPage,
   getPlaylists,
@@ -28,7 +29,6 @@ import {
   prevSpotify,
   setVolumeSpotify,
   seekSpotify,
-  getPlaybackState,
   logout,
   transferPlayback,
   addTracksToPlaylist,
@@ -45,6 +45,29 @@ function parseDuration(dur) {
   if (!dur) return 0;
   const [m, s] = dur.split(":");
   return parseInt(m) * 60 + parseInt(s);
+}
+
+function mapSdkTrack(sdkTrack) {
+  if (!sdkTrack?.id) return null;
+  const totalSec = Math.floor((sdkTrack.duration_ms || 0) / 1000);
+  const m = Math.floor(totalSec / 60);
+  const sec = (totalSec % 60).toString().padStart(2, "0");
+  return {
+    id: sdkTrack.id,
+    name: sdkTrack.name,
+    uri: sdkTrack.uri,
+    artist: sdkTrack.artists?.map((a) => a.name).join(", ") || "—",
+    duration: `${m}:${sec}`,
+    image: sdkTrack.album?.images?.[1]?.url || sdkTrack.album?.images?.[0]?.url,
+  };
+}
+
+function applyPlaybackPosition(positionMs, durationMs, setters) {
+  const durationSec = Math.max(1, Math.floor(durationMs / 1000));
+  const sec = Math.floor(positionMs / 1000);
+  setters.setCurrentSec(sec);
+  setters.setProgress(durationMs > 0 ? positionMs / durationMs : 0);
+  setters.totalSecRef.current = durationSec;
 }
 
 function getStoredVolume() {
@@ -109,6 +132,8 @@ export default function App() {
   const [loadingMsg, setLoadingMsg] = useState("");
   const [loadingHint, setLoadingHint] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
+  const [tracksLoading, setTracksLoading] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
 
   const [playlists, setPlaylists] = useState([]);
   const [likedTracks, setLikedTracks] = useState([]);
@@ -134,18 +159,54 @@ export default function App() {
   const [playerError, setPlayerError] = useState(null);
   const pendingPlayRef = useRef(null);
   const playerRef = useRef(null);
+  const deviceIdRef = useRef(null);
+  const currentPlaylistUriRef = useRef(null);
+  const currentTracksRef = useRef([]);
+  const currentIdxRef = useRef(0);
+  const isShuffleRef = useRef(false);
+  const isRepeatRef = useRef(false);
+  const advancingRef = useRef(false);
+  const userPausedRef = useRef(false);
+  const currentViewRef = useRef("liked");
 
   const [addModalTracks, setAddModalTracks] = useState(null);
   const [addModalLoading, setAddModalLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [volume, setVolume] = useState(getStoredVolume);
 
-  const intervalRef = useRef(null);
+  const progressIntervalRef = useRef(null);
   const totalSecRef = useRef(0);
-  const syncInterval = useRef(null);
   const volumeTimeoutRef = useRef(null);
   const volumeBeforeMuteRef = useRef(getStoredVolume());
   const toastTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    deviceIdRef.current = deviceId;
+  }, [deviceId]);
+
+  useEffect(() => {
+    currentPlaylistUriRef.current = currentPlaylistUri;
+  }, [currentPlaylistUri]);
+
+  useEffect(() => {
+    currentTracksRef.current = currentTracks;
+  }, [currentTracks]);
+
+  useEffect(() => {
+    currentIdxRef.current = currentIdx;
+  }, [currentIdx]);
+
+  useEffect(() => {
+    isShuffleRef.current = isShuffle;
+  }, [isShuffle]);
+
+  useEffect(() => {
+    isRepeatRef.current = isRepeat;
+  }, [isRepeat]);
+
+  useEffect(() => {
+    currentViewRef.current = currentView;
+  }, [currentView]);
 
   function showToast(message, type = "success") {
     setToast({ message, type });
@@ -202,6 +263,7 @@ export default function App() {
       });
 
       spotifyPlayer.addListener("ready", ({ device_id }) => {
+        deviceIdRef.current = device_id;
         setDeviceId(device_id);
         setPlayerReady(true);
         setPlayerError(null);
@@ -214,6 +276,41 @@ export default function App() {
             }
           })
           .catch(console.error);
+      });
+
+      spotifyPlayer.addListener("player_state_changed", (state) => {
+        if (!state) {
+          setIsPlaying(false);
+          return;
+        }
+
+        setIsPlaying(!state.paused);
+        if (state.paused) {
+          userPausedRef.current = true;
+        } else {
+          userPausedRef.current = false;
+          advancingRef.current = false;
+        }
+
+        setIsShuffle(Boolean(state.shuffle));
+        setIsRepeat(state.repeat_mode !== 0);
+
+        const sdkTrack = state.track_window?.current_track;
+        if (!sdkTrack) return;
+
+        const mapped = mapSdkTrack(sdkTrack);
+        if (!mapped) return;
+
+        const tracks = currentTracksRef.current;
+        const idx = tracks.findIndex((t) => t.id === mapped.id);
+        setCurrentTrack(mapped);
+        if (idx >= 0) setCurrentIdx(idx);
+
+        applyPlaybackPosition(state.position, state.duration, {
+          setCurrentSec,
+          setProgress,
+          totalSecRef,
+        });
       });
 
       spotifyPlayer.addListener("not_ready", () => {
@@ -299,25 +396,31 @@ export default function App() {
     setLoadingHint("");
     try {
       setLoadingMsg("SYNC.LIKED");
-      const liked = await getLikedTracks({
-        maxTracks: 50,
-        onProgress: (loaded, total) => {
-          if (total) setLoadingHint(`${loaded} / ${total} utworów`);
-        },
-      });
+      const [liked, pls, profile] = await Promise.all([
+        getLikedTracks({
+          maxTracks: 50,
+          onProgress: (loaded, total) => {
+            if (total) setLoadingHint(`${loaded} / ${total} utworów`);
+          },
+        }),
+        getPlaylists(),
+        getCurrentUser().catch(() => null),
+      ]);
       setLikedTracks(liked.tracks);
       setLikedTotal(liked.total);
       setLikedNextUrl(liked.hasMore ? liked.nextUrl : null);
-      setCurrentTracks(liked.tracks);
-
-      setLoadingMsg("SYNC.PLAYLISTS");
-      setLoadingHint("");
-      setPlaylists(await getPlaylists());
+      if (currentViewRef.current === "liked") {
+        setCurrentTracks(liked.tracks);
+        currentTracksRef.current = liked.tracks;
+      }
+      setPlaylists(pls);
+      if (profile) setUserProfile(profile);
     } catch (err) {
       console.error("Library sync failed:", err);
       showToast(err.message || "Błąd synchronizacji", "error");
       setLikedTracks([]);
       setCurrentTracks([]);
+      currentTracksRef.current = [];
       setPlaylists([]);
     } finally {
       setLoading(false);
@@ -328,58 +431,91 @@ export default function App() {
   async function refreshPlaylistTracks(playlistId) {
     const tracks = await getPlaylistTracks(playlistId);
     setTrackCache((prev) => ({ ...prev, [playlistId]: tracks }));
-    if (currentView === playlistId) setCurrentTracks(tracks);
+    if (currentViewRef.current === playlistId) {
+      setCurrentTracks(tracks);
+      currentTracksRef.current = tracks;
+    }
     return tracks;
   }
 
   async function handleSelectView(id) {
+    currentViewRef.current = id;
     setCurrentView(id);
+
     if (id === "liked") {
       setCurrentTracks(likedTracks);
+      currentTracksRef.current = likedTracks;
       setCurrentPlaylistUri(null);
+      currentPlaylistUriRef.current = null;
+      setTracksLoading(false);
       return;
     }
-    if (trackCache[id]) {
-      setCurrentTracks(trackCache[id]);
-    } else {
-      setLoading(true);
-      setLoadingMsg("LOAD.TRACKS");
-      try {
-        await refreshPlaylistTracks(id);
-      } catch (err) {
-        console.warn("Playlist access:", err);
-        setCurrentTracks([]);
-        showToast("Brak dostępu do tej playlisty", "error");
-      } finally {
-        setLoading(false);
-      }
-    }
+
     const pl = playlists.find((p) => p.id === id);
-    setCurrentPlaylistUri(pl?.uri || null);
+    const playlistUri = pl?.uri || null;
+    setCurrentPlaylistUri(playlistUri);
+    currentPlaylistUriRef.current = playlistUri;
+
+    const cached = trackCache[id];
+    if (cached) {
+      setCurrentTracks(cached);
+      currentTracksRef.current = cached;
+      setTracksLoading(false);
+      return;
+    }
+
+    setCurrentTracks([]);
+    currentTracksRef.current = [];
+    setTracksLoading(true);
+
+    try {
+      const tracks = await refreshPlaylistTracks(id);
+      setCurrentTracks(tracks);
+      currentTracksRef.current = tracks;
+    } catch (err) {
+      console.warn("Playlist access:", err);
+      setCurrentTracks([]);
+      currentTracksRef.current = [];
+      showToast("Brak dostępu do tej playlisty", "error");
+    } finally {
+      setTracksLoading(false);
+    }
   }
 
-  async function startPlayback(track, idx, contextUri) {
-    setCurrentTrack(track);
-    setCurrentIdx(idx);
-    setIsPlaying(true);
-    setCurrentSec(0);
-    setProgress(0);
-    totalSecRef.current = parseDuration(track.duration);
+  async function startPlayback(track, idx, contextUri, { skipLocalState = false } = {}) {
+    advancingRef.current = true;
+    userPausedRef.current = false;
+
+    if (!skipLocalState) {
+      setCurrentTrack(track);
+      setCurrentIdx(idx);
+      currentIdxRef.current = idx;
+      setIsPlaying(true);
+      setCurrentSec(0);
+      setProgress(0);
+      totalSecRef.current = parseDuration(track.duration);
+    }
+
     try {
-      await playTrackOnSpotify(track.uri, contextUri, deviceId);
+      await playTrackOnSpotify(track.uri, contextUri, deviceIdRef.current);
     } catch (err) {
       setIsPlaying(false);
       showToast(err.message || "Nie udało się odtworzyć", "error");
+    } finally {
+      setTimeout(() => {
+        advancingRef.current = false;
+      }, 400);
     }
   }
 
   function handlePlayTrack(track, idx, contextUriOverride) {
     const contextUri =
-      contextUriOverride !== undefined ? contextUriOverride : currentPlaylistUri;
-    if (!playerReady || !deviceId) {
+      contextUriOverride !== undefined ? contextUriOverride : currentPlaylistUriRef.current;
+    if (!playerReady || !deviceIdRef.current) {
       pendingPlayRef.current = () => startPlayback(track, idx, contextUri);
       setCurrentTrack(track);
       setCurrentIdx(idx);
+      currentIdxRef.current = idx;
       showToast("Łączenie odtwarzacza Spotify…", "success");
       return;
     }
@@ -388,25 +524,52 @@ export default function App() {
 
   function handlePlayFromSearch(track) {
     setCurrentPlaylistUri(null);
+    currentPlaylistUriRef.current = null;
     setCurrentTracks([track]);
+    currentTracksRef.current = [track];
     handlePlayTrack(track, 0, null);
   }
 
   async function handlePlayAll() {
-    if (!currentTracks.length) return;
-    const uri =
-      currentView === "liked"
-        ? null
-        : playlists.find((p) => p.id === currentView)?.uri;
-    if (uri) {
-      try {
-        await playContext(uri, deviceId, currentTracks[0].uri);
-        handlePlayTrack(currentTracks[0], 0);
-      } catch {
-        handlePlayTrack(currentTracks[0], 0);
+    const tracks = currentTracksRef.current;
+    if (!tracks.length) return;
+
+    const track = tracks[0];
+    const contextUri =
+      currentView === "liked" ? null : currentPlaylistUriRef.current;
+
+    if (!playerReady || !deviceIdRef.current) {
+      pendingPlayRef.current = () => startPlayback(track, 0, contextUri);
+      setCurrentTrack(track);
+      setCurrentIdx(0);
+      currentIdxRef.current = 0;
+      showToast("Łączenie odtwarzacza Spotify…", "success");
+      return;
+    }
+
+    advancingRef.current = true;
+    userPausedRef.current = false;
+    setCurrentTrack(track);
+    setCurrentIdx(0);
+    currentIdxRef.current = 0;
+    setIsPlaying(true);
+    setCurrentSec(0);
+    setProgress(0);
+    totalSecRef.current = parseDuration(track.duration);
+
+    try {
+      if (contextUri) {
+        await playContext(contextUri, deviceIdRef.current, track.uri);
+      } else {
+        await playTrackOnSpotify(track.uri, null, deviceIdRef.current);
       }
-    } else {
-      handlePlayTrack(currentTracks[0], 0);
+    } catch (err) {
+      setIsPlaying(false);
+      showToast(err.message || "Nie udało się odtworzyć", "error");
+    } finally {
+      setTimeout(() => {
+        advancingRef.current = false;
+      }, 400);
     }
   }
 
@@ -527,83 +690,131 @@ export default function App() {
       });
       setCurrentView("liked");
       setCurrentTracks(likedTracks);
+      currentTracksRef.current = likedTracks;
       setCurrentPlaylistUri(null);
+      currentPlaylistUriRef.current = null;
       showToast("Playlista usunięta");
     } catch (err) {
       showToast(err.message || "Nie udało się usunąć playlisty", "error");
     }
   }
 
-  useEffect(() => {
-    clearInterval(intervalRef.current);
-    if (isPlaying && currentTrack) {
-      intervalRef.current = setInterval(() => {
-        setCurrentSec((prev) => {
-          const next = prev + 1;
-          if (next >= totalSecRef.current) {
-            if (isRepeat) return 0;
-            handleNext();
-            return 0;
-          }
-          setProgress(next / totalSecRef.current);
-          return next;
-        });
-      }, 1000);
+  const advanceLocalQueue = useCallback(async () => {
+    if (advancingRef.current || currentPlaylistUriRef.current) return;
+
+    const tracks = currentTracksRef.current;
+    if (!tracks.length) return;
+
+    advancingRef.current = true;
+    const idx = currentIdxRef.current;
+
+    try {
+      if (isRepeatRef.current) {
+        await startPlayback(tracks[idx], idx, null);
+        return;
+      }
+
+      const nextIdx = isShuffleRef.current
+        ? Math.floor(Math.random() * tracks.length)
+        : (idx + 1) % tracks.length;
+
+      if (!isShuffleRef.current && idx === tracks.length - 1) {
+        setIsPlaying(false);
+        return;
+      }
+
+      await startPlayback(tracks[nextIdx], nextIdx, null);
+    } finally {
+      setTimeout(() => {
+        advancingRef.current = false;
+      }, 400);
     }
-    return () => clearInterval(intervalRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, currentTrack, isRepeat]);
+  }, []);
 
   useEffect(() => {
-    if (!loggedIn) return;
-    syncInterval.current = setInterval(async () => {
+    clearInterval(progressIntervalRef.current);
+    if (!playerReady || !playerRef.current) return undefined;
+
+    progressIntervalRef.current = setInterval(async () => {
       try {
-        const state = await getPlaybackState();
+        const state = await playerRef.current.getCurrentState();
         if (!state) return;
-        setIsPlaying(state.is_playing);
-        if (state.progress_ms !== undefined && totalSecRef.current > 0) {
-          const sec = Math.floor(state.progress_ms / 1000);
-          setCurrentSec(sec);
-          setProgress(sec / totalSecRef.current);
+
+        applyPlaybackPosition(state.position, state.duration, {
+          setCurrentSec,
+          setProgress,
+          totalSecRef,
+        });
+
+        const nearEnd =
+          state.duration > 0 && state.position >= state.duration - 500;
+        const trackEnded = nearEnd && state.paused && !userPausedRef.current;
+
+        if (
+          trackEnded &&
+          !currentPlaylistUriRef.current &&
+          !advancingRef.current
+        ) {
+          await advanceLocalQueue();
         }
       } catch {
-        /* optional */
+        /* player disconnected */
       }
-    }, 5000);
-    return () => clearInterval(syncInterval.current);
-  }, [loggedIn]);
+    }, 500);
+
+    return () => clearInterval(progressIntervalRef.current);
+  }, [playerReady, advanceLocalQueue]);
 
   async function handleTogglePlay() {
     if (!currentTrack) {
-      if (currentTracks.length > 0) handlePlayTrack(currentTracks[0], 0);
+      if (currentTracksRef.current.length > 0) handlePlayTrack(currentTracksRef.current[0], 0);
       return;
     }
     const newState = !isPlaying;
+    userPausedRef.current = !newState;
     setIsPlaying(newState);
     try {
-      if (newState) await resumeSpotify(deviceId);
-      else await pauseSpotify(deviceId);
+      if (newState) await resumeSpotify(deviceIdRef.current);
+      else await pauseSpotify(deviceIdRef.current);
     } catch (err) {
       console.warn("Toggle error:", err);
     }
   }
 
   const handleNext = useCallback(async () => {
-    if (!currentTracks.length) return;
-    const nextIdx = isShuffle
-      ? Math.floor(Math.random() * currentTracks.length)
-      : (currentIdx + 1) % currentTracks.length;
-    handlePlayTrack(currentTracks[nextIdx], nextIdx);
-    try {
-      await nextSpotify();
-    } catch {
-      /* optional */
+    const tracks = currentTracksRef.current;
+    if (!tracks.length || advancingRef.current) return;
+
+    if (currentPlaylistUriRef.current) {
+      advancingRef.current = true;
+      try {
+        await nextSpotify();
+      } catch (err) {
+        console.warn("Next error:", err);
+        const nextIdx = isShuffleRef.current
+          ? Math.floor(Math.random() * tracks.length)
+          : (currentIdxRef.current + 1) % tracks.length;
+        await startPlayback(tracks[nextIdx], nextIdx, currentPlaylistUriRef.current);
+      } finally {
+        setTimeout(() => {
+          advancingRef.current = false;
+        }, 400);
+      }
+      return;
     }
+
+    const nextIdx = isShuffleRef.current
+      ? Math.floor(Math.random() * tracks.length)
+      : (currentIdxRef.current + 1) % tracks.length;
+    await startPlayback(tracks[nextIdx], nextIdx, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIdx, currentTracks, isShuffle]);
+  }, []);
 
   async function handlePrev() {
-    if (!currentTracks.length) return;
+    const tracks = currentTracksRef.current;
+    if (!tracks.length || advancingRef.current) return;
+
     if (currentSec > 3) {
       setCurrentSec(0);
       setProgress(0);
@@ -614,13 +825,30 @@ export default function App() {
       }
       return;
     }
-    const prevIdx = (currentIdx - 1 + currentTracks.length) % currentTracks.length;
-    handlePlayTrack(currentTracks[prevIdx], prevIdx);
-    try {
-      await prevSpotify();
-    } catch {
-      /* optional */
+
+    if (currentPlaylistUriRef.current) {
+      advancingRef.current = true;
+      try {
+        await prevSpotify();
+      } catch (err) {
+        console.warn("Prev error:", err);
+        const prevIdx =
+          (currentIdxRef.current - 1 + tracks.length) % tracks.length;
+        await startPlayback(
+          tracks[prevIdx],
+          prevIdx,
+          currentPlaylistUriRef.current,
+        );
+      } finally {
+        setTimeout(() => {
+          advancingRef.current = false;
+        }, 400);
+      }
+      return;
     }
+
+    const prevIdx = (currentIdxRef.current - 1 + tracks.length) % tracks.length;
+    await startPlayback(tracks[prevIdx], prevIdx, null);
   }
 
   async function handleSeek(ratio) {
@@ -687,6 +915,7 @@ export default function App() {
   function disconnectPlayer() {
     playerRef.current?.disconnect();
     playerRef.current = null;
+    deviceIdRef.current = null;
     setPlayer(null);
     setDeviceId(null);
     setPlayerReady(false);
@@ -703,6 +932,7 @@ export default function App() {
     setPlaylists([]);
     setLikedTracks([]);
     setCurrentTrack(null);
+    setUserProfile(null);
   }
 
   async function handlePlaylistCreated(playlist) {
@@ -728,6 +958,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <Topbar
+        userProfile={userProfile}
         onLogout={() => handleLogout()}
         onSwitchAccount={() => handleLogout({ switchAccount: true })}
       />
@@ -788,6 +1019,7 @@ export default function App() {
           hasMoreLiked={Boolean(likedNextUrl)}
           likedTotal={likedTotal}
           loadingMore={loadingMore}
+          loadingTracks={tracksLoading}
         />
       </div>
 

@@ -247,6 +247,16 @@ export async function getLikedTracks({
   };
 }
 
+export async function getCurrentUser() {
+  const data = await api("/me");
+  if (!data?.id) return null;
+  return {
+    id: data.id,
+    displayName: data.display_name || "Spotify User",
+    imageUrl: data.images?.[0]?.url || data.images?.at(-1)?.url || null,
+  };
+}
+
 export async function getPlaylists() {
   const data = await api("/me/playlists?limit=50");
   if (!data?.items) return [];

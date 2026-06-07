@@ -31,6 +31,7 @@ export default function TrackList({
   hasMoreLiked,
   likedTotal,
   loadingMore,
+  loadingTracks,
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
@@ -114,7 +115,13 @@ export default function TrackList({
       </div>
 
       <div className="track-list-scroll">
-        {playlist.tracks.length === 0 ? (
+        {loadingTracks ? (
+          <div className="track-list-loading">
+            <span className="track-list-loading-spinner" aria-hidden="true" />
+            <span>ŁADOWANIE UTWORÓW</span>
+            <span className="cursor"> █</span>
+          </div>
+        ) : playlist.tracks.length === 0 ? (
           <div className="track-list-empty">BRAK UTWORÓW</div>
         ) : (
           playlist.tracks.map((track, i) => {
