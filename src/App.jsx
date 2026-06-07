@@ -493,6 +493,19 @@ export default function App() {
     }
   }
 
+  async function handleCopyPlaylistLink() {
+    if (currentView === "liked") return;
+    const pl = playlists.find((p) => p.id === currentView);
+    if (!pl?.id) return;
+    const url = `https://open.spotify.com/playlist/${pl.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Link skopiowany do schowka");
+    } catch {
+      showToast("Nie udało się skopiować linku", "error");
+    }
+  }
+
   async function handleDeletePlaylist() {
     if (currentView === "liked") return;
     const pl = playlists.find((p) => p.id === currentView);
@@ -745,6 +758,7 @@ export default function App() {
           onRemoveFromLiked={currentView === "liked" ? handleRemoveFromLiked : undefined}
           onRenamePlaylist={currentView !== "liked" ? handleRenamePlaylist : undefined}
           onDeletePlaylist={currentView !== "liked" ? handleDeletePlaylist : undefined}
+          onCopyPlaylistLink={currentView !== "liked" ? handleCopyPlaylistLink : undefined}
           onLoadMore={currentView === "liked" ? handleLoadMoreLiked : undefined}
           hasMoreLiked={Boolean(likedNextUrl)}
           likedTotal={likedTotal}

@@ -26,6 +26,7 @@ export default function TrackList({
   onRemoveFromLiked,
   onRenamePlaylist,
   onDeletePlaylist,
+  onCopyPlaylistLink,
   onLoadMore,
   hasMoreLiked,
   likedTotal,
@@ -82,6 +83,16 @@ export default function TrackList({
           {playlist.tracks.length > 0 && onPlayAll && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={onPlayAll} title="Odtwórz wszystko">
               <i className="ti ti-player-play" />
+            </button>
+          )}
+          {isPlaylist && onCopyPlaylistLink && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={onCopyPlaylistLink}
+              title="Kopiuj link do playlisty"
+            >
+              <i className="ti ti-link" />
             </button>
           )}
           {isPlaylist && onRenamePlaylist && (
