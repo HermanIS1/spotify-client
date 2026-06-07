@@ -120,6 +120,8 @@ export default function Player({
   volume,
   onVolume,
   onToggleMute,
+  showNowPlaying,
+  onToggleNowPlaying,
 }) {
   function handleSeek(e) {
     const bar = e.currentTarget;
@@ -159,7 +161,13 @@ export default function Player({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, width: 220, minWidth: 0 }}>
+        <button
+          type="button"
+          className="player-track-info"
+          onClick={track ? onToggleNowPlaying : undefined}
+          disabled={!track}
+          title={track ? "Tekst i profil artysty" : undefined}
+        >
           <div className="track-art" style={{ width: 44, height: 44 }}>
             {track?.image ? (
               <img src={track.image} alt="" />
@@ -178,7 +186,7 @@ export default function Player({
               </div>
             )}
           </div>
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, textAlign: "left" }}>
             <div
               className="title-display"
               style={{
@@ -197,9 +205,15 @@ export default function Player({
               </div>
             )}
           </div>
-        </div>
+        </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <CtrlBtn
+            icon="ti-microphone-2"
+            active={showNowPlaying && Boolean(track)}
+            onClick={() => track && onToggleNowPlaying?.()}
+            title="Tekst / artysta / album (L)"
+          />
           <CtrlBtn
             icon="ti-arrows-shuffle"
             active={isShuffle}

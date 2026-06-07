@@ -247,6 +247,49 @@ export async function getLikedTracks({
   };
 }
 
+export async function getTrack(trackId) {
+  const data = await api(`/tracks/${trackId}`);
+  if (!data?.id) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    uri: data.uri,
+    popularity: data.popularity ?? 0,
+    durationMs: data.duration_ms,
+    artist: data.artists?.map((a) => a.name).join(", ") || "—",
+    artistId: data.artists?.[0]?.id || null,
+    artistIds: (data.artists || []).map((a) => a.id).filter(Boolean),
+    album: {
+      id: data.album?.id,
+      name: data.album?.name || "—",
+      image: data.album?.images?.[0]?.url || data.album?.images?.[1]?.url,
+      releaseDate: data.album?.release_date || "",
+    },
+    image: data.album?.images?.[1]?.url || data.album?.images?.[0]?.url,
+    duration: msToMinSec(data.duration_ms),
+  };
+}
+
+export async function getArtist(artistId) {
+  const data = await api(`/artists/${artistId}`);
+  if (!data?.id) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    uri: data.uri,
+    genres: data.genres || [],
+    followers: data.followers?.total ?? 0,
+    popularity: data.popularity ?? 0,
+    image: data.images?.[0]?.url || data.images?.[1]?.url,
+    spotifyUrl: data.external_urls?.spotify,
+  };
+}
+
+export async function getArtistTopTracks(artistId, market = "PL") {
+  const data = await api(`/artists/${artistId}/top-tracks?market=${market}`);
+  return (data?.tracks || []).map((t) => mapApiTrack(t)).filter(Boolean);
+}
+
 export async function getCurrentUser() {
   const data = await api("/me");
   if (!data?.id) return null;

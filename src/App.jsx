@@ -5,6 +5,7 @@ import Topbar from "./components/Topbar";
 import Sidebar from "./components/Sidebar";
 import TrackList from "./components/TrackList";
 import Player from "./components/Player";
+import NowPlaying from "./components/NowPlaying";
 import Search from "./components/Search";
 import CreatePlaylist from "./components/CreatePlaylist";
 import AddToPlaylistModal from "./components/AddToPlaylistModal";
@@ -134,6 +135,9 @@ export default function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [tracksLoading, setTracksLoading] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
+  const [showNowPlaying, setShowNowPlaying] = useState(
+    () => localStorage.getItem("now_playing_open") !== "false",
+  );
 
   const [playlists, setPlaylists] = useState([]);
   const [likedTracks, setLikedTracks] = useState([]);
@@ -207,6 +211,14 @@ export default function App() {
   useEffect(() => {
     currentViewRef.current = currentView;
   }, [currentView]);
+
+  function toggleNowPlaying() {
+    setShowNowPlaying((open) => {
+      const next = !open;
+      localStorage.setItem("now_playing_open", String(next));
+      return next;
+    });
+  }
 
   function showToast(message, type = "success") {
     setToast({ message, type });
@@ -384,6 +396,7 @@ export default function App() {
       }
       if (e.code === "ArrowRight") handleNext();
       if (e.code === "ArrowLeft") handlePrev();
+      if (e.code === "KeyL" && currentTrack) toggleNowPlaying();
     }
 
     window.addEventListener("keydown", onKeyDown);
@@ -1002,25 +1015,37 @@ export default function App() {
           <CreatePlaylist onPlaylistCreated={handlePlaylistCreated} />
         </div>
 
-        <TrackList
-          playlist={activePlaylist}
-          currentTrackId={currentTrack?.id}
-          isPlaying={isPlaying}
-          onPlay={handlePlayTrack}
-          onAddToPlaylist={(track) => setAddModalTracks([track])}
-          onRemoveTrack={currentView !== "liked" ? handleRemoveFromPlaylist : undefined}
-          onPlayAll={handlePlayAll}
-          onSaveTrack={handleSaveTrack}
-          onRemoveFromLiked={currentView === "liked" ? handleRemoveFromLiked : undefined}
-          onRenamePlaylist={currentView !== "liked" ? handleRenamePlaylist : undefined}
-          onDeletePlaylist={currentView !== "liked" ? handleDeletePlaylist : undefined}
-          onCopyPlaylistLink={currentView !== "liked" ? handleCopyPlaylistLink : undefined}
-          onLoadMore={currentView === "liked" ? handleLoadMoreLiked : undefined}
-          hasMoreLiked={Boolean(likedNextUrl)}
-          likedTotal={likedTotal}
-          loadingMore={loadingMore}
-          loadingTracks={tracksLoading}
-        />
+        <div className="app-content-row">
+          <TrackList
+            playlist={activePlaylist}
+            currentTrackId={currentTrack?.id}
+            isPlaying={isPlaying}
+            onPlay={handlePlayTrack}
+            onAddToPlaylist={(track) => setAddModalTracks([track])}
+            onRemoveTrack={currentView !== "liked" ? handleRemoveFromPlaylist : undefined}
+            onPlayAll={handlePlayAll}
+            onSaveTrack={handleSaveTrack}
+            onRemoveFromLiked={currentView === "liked" ? handleRemoveFromLiked : undefined}
+            onRenamePlaylist={currentView !== "liked" ? handleRenamePlaylist : undefined}
+            onDeletePlaylist={currentView !== "liked" ? handleDeletePlaylist : undefined}
+            onCopyPlaylistLink={currentView !== "liked" ? handleCopyPlaylistLink : undefined}
+            onLoadMore={currentView === "liked" ? handleLoadMoreLiked : undefined}
+            hasMoreLiked={Boolean(likedNextUrl)}
+            likedTotal={likedTotal}
+            loadingMore={loadingMore}
+            loadingTracks={tracksLoading}
+          />
+
+          {showNowPlaying && currentTrack && (
+            <NowPlaying
+              track={currentTrack}
+              currentSec={currentSec}
+              isPlaying={isPlaying}
+              onClose={toggleNowPlaying}
+              onPlayTrack={(t) => handlePlayTrack(t, 0, null)}
+            />
+          )}
+        </div>
       </div>
 
       <Player
@@ -1039,6 +1064,8 @@ export default function App() {
         volume={volume}
         onVolume={applyVolume}
         onToggleMute={handleToggleMute}
+        showNowPlaying={showNowPlaying}
+        onToggleNowPlaying={toggleNowPlaying}
       />
 
       <AddToPlaylistModal
