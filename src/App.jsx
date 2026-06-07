@@ -58,6 +58,10 @@ function mapSdkTrack(sdkTrack) {
     name: sdkTrack.name,
     uri: sdkTrack.uri,
     artist: sdkTrack.artists?.map((a) => a.name).join(", ") || "—",
+    artistId:
+      sdkTrack.artists?.[0]?.uri?.replace("spotify:artist:", "") ||
+      sdkTrack.artists?.[0]?.id ||
+      null,
     duration: `${m}:${sec}`,
     image: sdkTrack.album?.images?.[1]?.url || sdkTrack.album?.images?.[0]?.url,
   };

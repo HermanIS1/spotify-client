@@ -1296,6 +1296,15 @@ body::after {
   text-decoration: none;
 }
 
+.np-artist-fallback-hint {
+  font-size: 10px;
+  color: var(--g4);
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  letter-spacing: 0.04em;
+}
+
 .np-top-tracks {
   margin-top: 8px;
 }

@@ -290,6 +290,81 @@ export async function getArtistTopTracks(artistId, market = "PL") {
   return (data?.tracks || []).map((t) => mapApiTrack(t)).filter(Boolean);
 }
 
+export async function searchArtist(query) {
+  const primary = query?.split(",")[0]?.trim();
+  if (!primary) return null;
+
+  const data = await searchSpotify(primary, { type: "artist", limit: 5 });
+  const items = data?.artists?.items || [];
+  if (!items.length) return null;
+
+  const normalized = primary.toLowerCase();
+  const match =
+    items.find((a) => a.name?.toLowerCase() === normalized) ||
+    items.find((a) => a.name?.toLowerCase().includes(normalized)) ||
+    items[0];
+
+  return getArtist(match.id);
+}
+
+export async function getArtistTopTracksSafe(artistId) {
+  const markets = ["PL", "US", "GB", "DE", "SE"];
+  for (const market of markets) {
+    try {
+      const tracks = await getArtistTopTracks(artistId, market);
+      if (tracks.length) return tracks;
+    } catch {
+      /* try next market */
+    }
+  }
+  try {
+    return await getArtistTopTracks(artistId, "US");
+  } catch {
+    return [];
+  }
+}
+
+export async function loadArtistProfile({ artistId, artistName }) {
+  let artist = null;
+
+  if (artistId) {
+    try {
+      artist = await getArtist(artistId);
+    } catch (err) {
+      console.warn("getArtist failed:", err);
+    }
+  }
+
+  if (!artist && artistName) {
+    try {
+      artist = await searchArtist(artistName);
+    } catch (err) {
+      console.warn("searchArtist failed:", err);
+    }
+  }
+
+  const resolvedId = artist?.id || artistId || null;
+  const topTracks = resolvedId ? await getArtistTopTracksSafe(resolvedId) : [];
+
+  if (!artist && artistName) {
+    artist = {
+      id: resolvedId,
+      name: artistName.split(",")[0].trim(),
+      uri: resolvedId ? `spotify:artist:${resolvedId}` : null,
+      genres: [],
+      followers: 0,
+      popularity: 0,
+      image: null,
+      spotifyUrl: resolvedId
+        ? `https://open.spotify.com/artist/${resolvedId}`
+        : null,
+      isFallback: true,
+    };
+  }
+
+  return { artist, topTracks };
+}
+
 export async function getCurrentUser() {
   const data = await api("/me");
   if (!data?.id) return null;

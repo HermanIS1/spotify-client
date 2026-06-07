@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { getTrack, getArtist, getArtistTopTracks } from "../spotify";
+import { getTrack, loadArtistProfile } from "../spotify";
 import { fetchLyrics, parseLrc, getLyricSyncState } from "../lyrics";
 
 function LyricLine({ line, lineIdx, sync, isPast, lineRef, onSeekToTime }) {
@@ -70,6 +70,7 @@ export default function NowPlaying({
   const [lyrics, setLyrics] = useState(null);
   const [syncedLines, setSyncedLines] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [artistLoading, setArtistLoading] = useState(false);
   const lyricsRef = useRef(null);
   const activeLineRef = useRef(null);
 
@@ -88,13 +89,18 @@ export default function NowPlaying({
     setSyncedLines([]);
 
     async function load() {
+      setArtistLoading(true);
       try {
-        const [trackData, lyricsData] = await Promise.all([
+        const [trackResult, lyricsResult] = await Promise.allSettled([
           getTrack(track.id),
           fetchLyrics(track.name, track.artist, parseDuration(track.duration)),
         ]);
 
         if (cancelled) return;
+
+        const trackData = trackResult.status === "fulfilled" ? trackResult.value : null;
+        const lyricsData = lyricsResult.status === "fulfilled" ? lyricsResult.value : null;
+
         setDetails(trackData);
         setLyrics(lyricsData);
 
@@ -106,20 +112,22 @@ export default function NowPlaying({
           setSyncedLines(parseLrc(lyricsData.synced, durationSec));
         }
 
-        if (trackData?.artistId) {
-          const [artistData, tops] = await Promise.all([
-            getArtist(trackData.artistId),
-            getArtistTopTracks(trackData.artistId),
-          ]);
-          if (!cancelled) {
-            setArtist(artistData);
-            setTopTracks(tops.slice(0, 5));
-          }
+        const profile = await loadArtistProfile({
+          artistId: trackData?.artistId || track.artistId,
+          artistName: trackData?.artist || track.artist,
+        });
+
+        if (!cancelled) {
+          setArtist(profile.artist);
+          setTopTracks(profile.topTracks.slice(0, 5));
         }
       } catch (err) {
         console.warn("Now playing load:", err);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setArtistLoading(false);
+        }
       }
     }
 
@@ -236,7 +244,12 @@ export default function NowPlaying({
 
         {!loading && tab === "artist" && (
           <div className="now-playing-artist-panel">
-            {artist ? (
+            {artistLoading ? (
+              <div className="now-playing-loading">
+                <span className="track-list-loading-spinner" />
+                <span>ŁADOWANIE ARTYSTY...</span>
+              </div>
+            ) : artist ? (
               <>
                 <div className="artist-card">
                   {artist.image ? (
@@ -265,7 +278,7 @@ export default function NowPlaying({
 
                 <PopularityBar value={artist.popularity} label="Popularność artysty" />
 
-                {artist.spotifyUrl && (
+                {artist.spotifyUrl && !artist.isFallback && (
                   <a
                     href={artist.spotifyUrl}
                     target="_blank"
@@ -275,6 +288,12 @@ export default function NowPlaying({
                     <i className="ti ti-brand-spotify" />
                     Otwórz w Spotify
                   </a>
+                )}
+
+                {artist.isFallback && (
+                  <p className="np-artist-fallback-hint">
+                    Pełny profil niedostępny — wyświetlam podstawowe dane z utworu.
+                  </p>
                 )}
 
                 {topTracks.length > 0 && (
