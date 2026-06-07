@@ -1,3 +1,5 @@
+import { useRef } from "react";
+
 function fmtSec(s) {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60)
@@ -20,6 +22,88 @@ function CtrlBtn({ icon, active, onClick, title }) {
   );
 }
 
+function volumeIcon(volume) {
+  if (volume === 0) return "ti-volume-off";
+  if (volume < 35) return "ti-volume-2";
+  return "ti-volume";
+}
+
+function VolumeControl({ volume, onChange, onToggleMute }) {
+  const barRef = useRef(null);
+  const draggingRef = useRef(false);
+
+  function setFromClientX(clientX) {
+    const bar = barRef.current;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    onChange(Math.round(ratio * 100));
+  }
+
+  function handlePointerDown(e) {
+    draggingRef.current = true;
+    barRef.current?.setPointerCapture(e.pointerId);
+    setFromClientX(e.clientX);
+  }
+
+  function handlePointerMove(e) {
+    if (!draggingRef.current) return;
+    setFromClientX(e.clientX);
+  }
+
+  function handlePointerUp(e) {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    barRef.current?.releasePointerCapture(e.pointerId);
+  }
+
+  return (
+    <div className="volume-control">
+      <button
+        type="button"
+        className="btn-icon volume-btn"
+        onClick={onToggleMute}
+        title={volume === 0 ? "Włącz dźwięk" : "Wycisz"}
+      >
+        <i className={`ti ${volumeIcon(volume)}`} />
+      </button>
+
+      <div
+        ref={barRef}
+        className="volume-slider"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        role="slider"
+        aria-label="Głośność"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={volume}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+            e.preventDefault();
+            onChange(Math.min(100, volume + 5));
+          }
+          if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+            e.preventDefault();
+            onChange(Math.max(0, volume - 5));
+          }
+        }}
+      >
+        <div className="volume-track">
+          <div className="volume-fill" style={{ width: `${volume}%` }} />
+          <div className="volume-thumb" style={{ left: `${volume}%` }} />
+        </div>
+      </div>
+
+      <span className="volume-value">{volume}</span>
+    </div>
+  );
+}
+
 export default function Player({
   track,
   isPlaying,
@@ -33,7 +117,9 @@ export default function Player({
   onToggleShuffle,
   onToggleRepeat,
   onSeek,
+  volume,
   onVolume,
+  onToggleMute,
 }) {
   function handleSeek(e) {
     const bar = e.currentTarget;
@@ -138,25 +224,7 @@ export default function Player({
           <CtrlBtn icon="ti-repeat" active={isRepeat} onClick={onToggleRepeat} title="Powtarzaj" />
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            width: 160,
-            justifyContent: "flex-end",
-          }}
-        >
-          <i className="ti ti-volume" style={{ fontSize: 16, color: "var(--g3)" }} />
-          <input
-            type="range"
-            min="0"
-            max="100"
-            defaultValue={localStorage.getItem("spotify_volume") || "80"}
-            onChange={(e) => onVolume(parseInt(e.target.value, 10))}
-            style={{ width: 90, accentColor: "var(--g-glow)" }}
-          />
-        </div>
+        <VolumeControl volume={volume} onChange={onVolume} onToggleMute={onToggleMute} />
       </div>
     </footer>
   );

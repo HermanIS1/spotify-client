@@ -47,6 +47,11 @@ function parseDuration(dur) {
   return parseInt(m) * 60 + parseInt(s);
 }
 
+function getStoredVolume() {
+  const stored = Number(localStorage.getItem("spotify_volume"));
+  return Number.isFinite(stored) ? Math.max(0, Math.min(100, stored)) : 50;
+}
+
 function LoginScreen() {
   return (
     <div className="screen-center">
@@ -133,11 +138,13 @@ export default function App() {
   const [addModalTracks, setAddModalTracks] = useState(null);
   const [addModalLoading, setAddModalLoading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [volume, setVolume] = useState(getStoredVolume);
 
   const intervalRef = useRef(null);
   const totalSecRef = useRef(0);
   const syncInterval = useRef(null);
   const volumeTimeoutRef = useRef(null);
+  const volumeBeforeMuteRef = useRef(getStoredVolume());
   const toastTimeoutRef = useRef(null);
 
   function showToast(message, type = "success") {
@@ -191,7 +198,7 @@ export default function App() {
             cb("");
           }
         },
-        volume: Number(localStorage.getItem("spotify_volume") || 50) / 100,
+        volume: getStoredVolume() / 100,
       });
 
       spotifyPlayer.addListener("ready", ({ device_id }) => {
@@ -627,16 +634,34 @@ export default function App() {
     }
   }
 
-  async function handleVolume(val) {
-    localStorage.setItem("spotify_volume", String(val));
+  function applyVolume(val) {
+    const clamped = Math.max(0, Math.min(100, Math.round(val)));
+    setVolume(clamped);
+    localStorage.setItem("spotify_volume", String(clamped));
+    if (clamped > 0) volumeBeforeMuteRef.current = clamped;
+
+    try {
+      playerRef.current?.setVolume(clamped / 100);
+    } catch (err) {
+      console.warn("Player volume error:", err);
+    }
+
     if (volumeTimeoutRef.current) clearTimeout(volumeTimeoutRef.current);
     volumeTimeoutRef.current = setTimeout(async () => {
       try {
-        await setVolumeSpotify(val);
+        await setVolumeSpotify(clamped);
       } catch (err) {
         console.warn("Volume error:", err);
       }
-    }, 300);
+    }, 120);
+  }
+
+  function handleToggleMute() {
+    if (volume > 0) {
+      applyVolume(0);
+      return;
+    }
+    applyVolume(volumeBeforeMuteRef.current || 50);
   }
 
   async function handleToggleShuffle() {
@@ -779,7 +804,9 @@ export default function App() {
         onToggleShuffle={handleToggleShuffle}
         onToggleRepeat={handleToggleRepeat}
         onSeek={handleSeek}
-        onVolume={handleVolume}
+        volume={volume}
+        onVolume={applyVolume}
+        onToggleMute={handleToggleMute}
       />
 
       <AddToPlaylistModal
