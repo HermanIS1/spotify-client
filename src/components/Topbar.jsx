@@ -62,7 +62,7 @@ export default function Topbar({ userProfile, onLogout, onSwitchAccount }) {
         <span style={{ color: "var(--g2)" }}>ONLINE</span>
       </div>
 
-      <span className="kbd-hint">SPACE · ← → · L</span>
+      <span className="kbd-hint">SPACE · ← → · PAUSE</span>
 
       <div className="topbar-actions">
         {userProfile && (
