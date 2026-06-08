@@ -418,7 +418,7 @@ export default function App() {
       setLoadingMsg("SYNC.LIKED");
       const [liked, pls, profile] = await Promise.all([
         getLikedTracks({
-          maxTracks: 50,
+          maxTracks: 100,
           onProgress: (loaded, total) => {
             if (total) setLoadingHint(`${loaded} / ${total} utworów`);
           },
